@@ -5,7 +5,7 @@ import type { Meeting, Session } from "@/lib/openf1/types";
 import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
-import { PICKER_SESSIONS, type Catalog } from "./catalog";
+import { PICKER_SESSIONS, SETTLE_MS, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
 import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey } from "./ingest";
@@ -14,11 +14,9 @@ import type { SessionMeta, TelemetryChunk } from "./types";
 /** "fixtures" serves only the recorded sessions and never touches the network. */
 export const dataMode = (): "openf1" | "fixtures" => (process.env.F1_DATA_MODE === "fixtures" ? "fixtures" : "openf1");
 
-const SETTLE_MS = 3 * 60 * 60_000;
 const CURRENT_YEAR_TTL_MS = 6 * 60 * 60_000;
 
 function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], source: Catalog["source"]): Catalog {
-  const now = Date.now();
   return {
     year,
     source,
@@ -32,9 +30,8 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
         dateStart: m.date_start,
         sessions: sessions
           .filter((s) => s.meeting_key === m.meeting_key && PICKER_SESSIONS.includes(s.session_name) && !s.is_cancelled)
-          .filter((s) => Date.parse(s.date_start) < now)
           .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
-          .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: Date.parse(s.date_end) + SETTLE_MS < now, downloaded: false })),
+          .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: false, upcoming: false, downloaded: false })),
       }))
       .filter((m) => m.sessions.length > 0)
       .sort((a, b) => a.dateStart.localeCompare(b.dateStart)),
@@ -44,19 +41,29 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
 export async function getCatalog(year: number): Promise<Catalog> {
   if (dataMode() === "fixtures") {
     const sessions = (await fixtureSessions()).filter((s) => s.year === year);
-    const catalog = buildCatalog(year, (await fixtureMeetings()).filter((m) => m.year === year), sessions, "fixtures");
-    for (const m of catalog.meetings) for (const s of m.sessions) s.downloaded = true;
-    return catalog;
+    return withStatus(buildCatalog(year, (await fixtureMeetings()).filter((m) => m.year === year), sessions, "fixtures"), () => true);
   }
   const catalog = await cachedCatalog(year);
-  // Which sessions are downloaded changes all the time, so it is added per request, not cached.
+  // What is downloaded, started or final changes all the time, so it is worked out per request.
   const downloaded = await sessionIndex().complete();
-  for (const m of catalog.meetings) for (const s of m.sessions) s.downloaded = downloaded.has(s.sessionKey);
+  return withStatus(catalog, (key) => downloaded.has(key));
+}
+
+function withStatus(catalog: Catalog, isDownloaded: (sessionKey: number) => boolean): Catalog {
+  const now = Date.now();
+  for (const m of catalog.meetings) {
+    for (const s of m.sessions) {
+      s.upcoming = Date.parse(s.dateStart) > now;
+      s.available = Date.parse(s.dateEnd) + SETTLE_MS < now;
+      s.downloaded = isDownloaded(s.sessionKey);
+    }
+  }
   return catalog;
 }
 
 async function cachedCatalog(year: number): Promise<Catalog> {
-  const key = `catalog/${year}.json`;
+  // v2: also lists sessions that have not started yet.
+  const key = `catalog/v2/${year}.json`;
   const cached = await readJson<Catalog>(key);
   const finishedYear = year < new Date().getUTCFullYear();
   if (cached && (finishedYear || Date.now() - Date.parse(cached.fetchedAt) < CURRENT_YEAR_TTL_MS)) return cached;

@@ -46,12 +46,14 @@ All are server-only; see [`.env.example`](.env.example).
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Store downloaded sessions in Supabase (private `sessions` bucket, `stored_sessions` and `marshal_observations` tables; schema in `supabase/migrations`). Use the project's secret key (`sb_secret_…`); it stays on the server. Without them, sessions are stored on disk. |
 | `STORE_DIR` | Disk store location (default `.cache/store`) |
 | `STORE_CAP_MB` | Refuse new downloads above this size (default 900) |
+| `CRON_SECRET` | Shared secret for the scheduled-download endpoints (`/api/cron/*`), called by the Supabase jobs in `supabase/cron.sql` |
 | `OPENF1_USERNAME`, `OPENF1_PASSWORD` | Reserved for live mode (paid OpenF1 tier). Not used yet. |
 
 ## How it works
 
 - **Data** comes only from the server. The browser asks the app's API; the server fetches OpenF1 at the free tier's pace (one request every 2.1 s) and stores each session as gzipped JSON in Supabase Storage (or on disk in development): one metadata file (timing, flags, results, the circuit outline) and one file per 15 minutes of car positions and car data. A race is about 5 MB stored. A `stored_sessions` table tracks what is stored, for the size cap and the picker's "downloaded" markers. Car telemetry is kept as files, not rows: about 1.2 million samples a race would fill the free database in a handful of races.
-- **Ingest** is driven by the browser one step at a time, so each step fits in a Vercel Hobby function (300 s) and progress is visible. The window under the playhead downloads first.
+- **New sessions download themselves.** `session_calendar` holds the published schedule (refreshed daily). A Supabase Cron job checks every 15 minutes whether a session has passed its end time plus 3 hours (when OpenF1's data is final) and is not stored; only then does it call `/api/cron/download`, which downloads the whole session on the server. Setup: `supabase/cron.sql`. The picker lists upcoming sessions with their start times.
+- **Ingest** of anything else is driven by the browser one step at a time, so each step fits in a Vercel Hobby function (300 s) and progress is visible. The window under the playhead downloads first.
 - **Replay** runs in the browser. Everything shown is calculated from the session data at the replay time, so playing, pausing, 1–16× speeds, scrubbing and jumping to a lap or a qualifying phase (forwards or backwards) all stay consistent.
 - **Track outline**: the racing line of one fast lap, from OpenF1 car positions, so cars sit on it by construction. Sector boundaries come from that lap's sector times.
 - **Marshal sectors**: OpenF1 only gives a flagged sector's number. Where MultiViewer has a circuit file, the server fetches it once and caches it, and the flagged stretch runs from that sector's marker to the next. Elsewhere a stretch is drawn only where stops in at least two other sessions have located it (the `marshal_observations` table, or `data/marshal-sectors/` without Supabase, written by `npm run backtest -- --learn`); otherwise the sector is named but not drawn.
