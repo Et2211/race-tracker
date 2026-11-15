@@ -1,4 +1,5 @@
 import type { Lap, RaceControl } from "@/lib/openf1/types";
+import type { SessionKind } from "@/lib/session/types";
 import { phaseStarts, type Phase } from "@/lib/timing/qualifying";
 import { lapStarts } from "./timeline";
 
@@ -11,7 +12,12 @@ export type SyncPoint = { id: string; label: string; short: string; t: number };
  * starts), then each lap as the leader crosses the line, when the TV lap counter goes up.
  * Qualifying: the start of each phase, when the pit exit opens and the session clock starts.
  */
-export function syncPoints(kind: "race" | "qualifying" | "other", laps: Lap[], raceControl: RaceControl[], sessionName: string): SyncPoint[] {
+export function syncPoints(kind: SessionKind, laps: Lap[], raceControl: RaceControl[], sessionName: string): SyncPoint[] {
+  if (kind === "practice") {
+    // The pit exit opening is the one moment the broadcast always shows.
+    const started = raceControl.find((r) => r.message === "SESSION STARTED");
+    return started ? [{ id: "start", label: "Session starts (pit exit opens)", short: "the start of the session", t: Date.parse(started.date) }] : [];
+  }
   if (kind === "qualifying") {
     const prefix = sessionName.startsWith("Sprint") ? "SQ" : "Q";
     const starts = phaseStarts(raceControl);

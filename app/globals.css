@@ -325,3 +325,4 @@ a:focus-visible {
 .chart-table summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 32px; display: inline-flex; align-items: center; }
 .chart-table summary:hover { color: var(--text); }
 .chart-table .scroll { margin-top: 8px; max-height: none; }
+.chip-session.practice { border-style: dashed; }

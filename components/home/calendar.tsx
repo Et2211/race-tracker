@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { HomeData } from "@/lib/home/data";
 import { SHAPE_VIEWBOX } from "@/lib/session/summary";
 
-const SHORT: Record<string, string> = { Race: "Race", Sprint: "Sprint", Qualifying: "Quali", "Sprint Qualifying": "Sprint quali" };
+const SHORT: Record<string, string> = { Race: "Race", Sprint: "Sprint", Qualifying: "Quali", "Sprint Qualifying": "Sprint quali", "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3" };
 
 const dates = (start: string, end: string) => {
   const a = new Date(start);
@@ -56,7 +56,7 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
                   <div className="chip-row">
                     {m.sessions.map((s) =>
                       s.available ? (
-                        <Link key={s.sessionKey} href={`/session/${s.sessionKey}`} className="chip-session link" title={`Watch ${s.name}`}>
+                        <Link key={s.sessionKey} href={`/session/${s.sessionKey}`} className="chip-session link" title={s.notStored ? `Watch ${s.name} (loads from OpenF1 each time; practice is not stored)` : `Watch ${s.name}`}>
                           {SHORT[s.name] ?? s.name}
                         </Link>
                       ) : (
@@ -65,7 +65,7 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
                             {SHORT[s.name] ?? s.name} · live
                           </Link>
                         ) : (
-                          <span key={s.sessionKey} className="chip-session" title={s.upcoming ? `${s.name}: not run yet` : `${s.name}: results not final yet`}>{SHORT[s.name] ?? s.name}</span>
+                          <span key={s.sessionKey} className={`chip-session ${s.notStored ? "practice" : ""}`} title={s.upcoming ? `${s.name}: not run yet` : `${s.name}: results not final yet`}>{SHORT[s.name] ?? s.name}</span>
                         )
                       ),
                     )}

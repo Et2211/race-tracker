@@ -5,7 +5,7 @@ import type { Meeting, Session } from "@/lib/openf1/types";
 import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
-import { PICKER_SESSIONS, SETTLE_MS, type Catalog } from "./catalog";
+import { buildCatalog, withStatus, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
 import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, storedSessionMeta } from "./ingest";
@@ -15,31 +15,6 @@ import type { SessionMeta, TelemetryChunk } from "./types";
 export const dataMode = (): "openf1" | "fixtures" => (process.env.F1_DATA_MODE === "fixtures" ? "fixtures" : "openf1");
 
 const CURRENT_YEAR_TTL_MS = 6 * 60 * 60_000;
-
-function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], source: Catalog["source"]): Catalog {
-  return {
-    year,
-    source,
-    fetchedAt: new Date().toISOString(),
-    meetings: meetings
-      .filter((m) => !/testing/i.test(m.meeting_name))
-      .map((m) => ({
-        meetingKey: m.meeting_key,
-        name: m.meeting_name,
-        circuit: m.circuit_short_name,
-        circuitKey: m.circuit_key,
-        dateStart: m.date_start,
-        dateEnd: m.date_end ?? m.date_start,
-        cancelled: Boolean(m.is_cancelled),
-        sessions: sessions
-          .filter((s) => s.meeting_key === m.meeting_key && PICKER_SESSIONS.includes(s.session_name) && !s.is_cancelled && !m.is_cancelled)
-          .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
-          .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: false, upcoming: false, downloaded: false })),
-      }))
-      .filter((m) => m.sessions.length > 0 || m.cancelled)
-      .sort((a, b) => a.dateStart.localeCompare(b.dateStart)),
-  };
-}
 
 export async function getCatalog(year: number, downloadedSet?: Set<number>): Promise<Catalog> {
   if (dataMode() === "fixtures") {
@@ -52,21 +27,10 @@ export async function getCatalog(year: number, downloadedSet?: Set<number>): Pro
   return withStatus(catalog, (key) => downloaded.has(key));
 }
 
-function withStatus(catalog: Catalog, isDownloaded: (sessionKey: number) => boolean): Catalog {
-  const now = Date.now();
-  for (const m of catalog.meetings) {
-    for (const s of m.sessions) {
-      s.upcoming = Date.parse(s.dateStart) > now;
-      s.available = Date.parse(s.dateEnd) + SETTLE_MS < now;
-      s.downloaded = isDownloaded(s.sessionKey);
-    }
-  }
-  return catalog;
-}
 
 async function cachedCatalog(year: number): Promise<Catalog> {
-  // v3: lists sessions that have not started yet, and cancelled rounds.
-  const key = `catalog/v3/${year}.json`;
+  // v4: lists practice sessions (live only), sessions that have not started yet, and cancelled rounds.
+  const key = `catalog/v4/${year}.json`;
   const cached = await readJson<Catalog>(key);
   // A season's list is final only if it was fetched after the season ended (late changes included).
   const final = cached !== null && Date.parse(cached.fetchedAt) >= Date.UTC(year + 1, 0, 1);
@@ -132,7 +96,7 @@ export async function ensureChunk(sessionKey: number, index: number): Promise<Te
     if (!raw) throw new Error(`No recorded window ${index} for session ${sessionKey}`);
     return JSON.parse(gunzipSync(raw).toString("utf8")) as TelemetryChunk;
   }
-  const meta = await storedSessionMeta(sessionKey);
-  if (!meta) throw new Error("Load the session's metadata first");
+  // Stored metadata, or (practice, never stored) the copy built for this viewer a moment ago.
+  const meta = (await storedSessionMeta(sessionKey)) ?? (await ingestMeta(sessionKey));
   return ingestWindow(meta, index);
 }
