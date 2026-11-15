@@ -27,8 +27,8 @@ export function LatestRace({ latest }: { latest: NonNullable<HomeData["latest"]>
             <li key={r.driver}>
               <span className="podium-pos">P{r.position}</span>
               <span className="bar" style={{ background: d?.colour }} />
-              <span className="code">{d?.code ?? `#${r.driver}`}</span>
-              <span className="name">{d?.name}</span>
+              <span className="code" style={{ fontSize: 17 }}>{d?.name ?? d?.code}</span>
+              <span className="name num">#{r.driver}</span>
               <span className="num muted" style={{ marginLeft: "auto" }}>{r.gap ?? "Winner"}</span>
             </li>
           );

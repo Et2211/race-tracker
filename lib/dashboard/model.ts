@@ -1,3 +1,4 @@
+import type { Battle } from "@/lib/timing/battles";
 import type { Confidence } from "@/lib/incident/stopped";
 import type { LogTone } from "@/lib/flags/state";
 import type { IdealLap, Phase, QualifyingPhase } from "@/lib/timing/qualifying";
@@ -84,6 +85,8 @@ export type Snapshot = {
   classification: { driver: number; onTrack: number | null; official: number | null; status: string | null }[] | null;
   leader: number | null;
   trend: { fromLap: number; toLap: number; series: TrendSeries[] } | null;
+  /** Races only, after the start: pairs worth watching, or why there are none to suggest. */
+  watch: { battles: Battle[]; note: string | null } | null;
   qualifying: QualifyingView | null;
   log: LogEntry[];
 };

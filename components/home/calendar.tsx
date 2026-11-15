@@ -38,7 +38,10 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
             <div className="round-name">{m.name}</div>
             <div className="muted" style={{ fontSize: 13 }}>{m.circuit}</div>
             {m.shape ? (
-              <svg className="round-track" viewBox={SHAPE_VIEWBOX} aria-hidden="true"><path d={m.shape.path} /></svg>
+              <div className="round-figure">
+                <svg className="round-track" viewBox={SHAPE_VIEWBOX} aria-hidden="true"><path d={m.shape.path} /></svg>
+                {m.shape.year < new Date(m.dateStart).getUTCFullYear() && <span className="layout-note">{m.shape.year} layout</span>}
+              </div>
             ) : (
               <div className="round-track placeholder" aria-hidden="true" />
             )}
@@ -47,7 +50,7 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
             ) : (
               <>
                 {m.winner && (
-                  <div className="round-winner"><span className="bar" style={{ background: m.winner.colour, height: 16 }} /> Winner <strong>{m.winner.code}</strong></div>
+                  <div className="round-winner"><span className="bar" style={{ background: m.winner.colour, height: 16 }} /> Winner <strong>{m.winner.name}</strong> #{m.winner.number}</div>
                 )}
                 <div className="round-foot">
                   <div className="chip-row">

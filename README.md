@@ -34,6 +34,7 @@ To work offline, set `F1_DATA_MODE=fixtures`: only the four recorded sessions in
 | `npm run ingest -- <session keys>` or `-- --year 2026 --type Race` | Download sessions into the store through a running server (`BASE_URL`, default `http://localhost:3000`) |
 | `npm run backtest [-- --sweep] [-- --learn]` | Score the stopped-car inference against every downloaded session (local store); writes `docs/m6-backtest.md`. `--learn` records marshal-sector positions (to Supabase when configured, else `data/marshal-sectors`) |
 | `npm run store:upload [-- <session keys>]` | Copy sessions from the local store to Supabase so they need not be fetched from OpenF1 again |
+| `npm run backfill [-- --standings]` | Write homepage summaries and circuit outlines for sessions stored before they existed (no OpenF1 calls). `--standings` also fetches the championship table after every race and sprint since 2023 (3 OpenF1 requests each; don't run it alongside a download) |
 
 ## Environment variables
 
@@ -43,7 +44,7 @@ All are server-only; see [`.env.example`](.env.example).
 | --- | --- |
 | `F1_DATA_MODE` | `openf1` (default) or `fixtures` (recorded sessions only, no network) |
 | `OPENF1_API_BASE` | OpenF1 base URL (default `https://api.openf1.org/v1`) |
-| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Store downloaded sessions in Supabase (private `sessions` bucket, `stored_sessions` and `marshal_observations` tables; schema in `supabase/migrations`). Use the project's secret key (`sb_secret_…`); it stays on the server. Without them, sessions are stored on disk. |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Store downloaded sessions in Supabase (private `sessions` bucket, `stored_sessions`, `marshal_observations`, `session_calendar` and `download_locks` tables; schema in `supabase/migrations`, apply them in order). Use the project's secret key (`sb_secret_…`); it stays on the server. Without them, sessions are stored on disk. |
 | `STORE_DIR` | Disk store location (default `.cache/store`) |
 | `STORE_CAP_MB` | Refuse new downloads above this size (default 900) |
 | `CRON_SECRET` | Shared secret for the scheduled-download endpoints (`/api/cron/*`), called by the Supabase jobs in `supabase/cron.sql` |
