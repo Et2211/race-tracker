@@ -32,7 +32,11 @@ interface SessionIndex {
   added(sessionKey: number, bytes: number, window: boolean): Promise<void>;
   /** Sessions with metadata and every telemetry window stored. */
   complete(): Promise<Set<number>>;
+  /** Bytes stored for sessions, the cap, and how many sessions are complete. */
+  usage(): Promise<StorageUsage>;
 }
+
+export type StorageUsage = { bytes: number; capBytes: number; sessions: number };
 
 class SupabaseIndex implements SessionIndex {
   async reserve(info: SessionInfo) {
@@ -63,6 +67,11 @@ class SupabaseIndex implements SessionIndex {
     const { data, error } = await supabase().from("stored_sessions").select("session_key, windows, windows_stored");
     if (error) throw error;
     return new Set(data.filter((r) => r.windows_stored >= r.windows).map((r) => r.session_key as number));
+  }
+  async usage() {
+    const { data, error } = await supabase().from("stored_sessions").select("bytes, windows, windows_stored");
+    if (error) throw error;
+    return { bytes: data.reduce((s, r) => s + Number(r.bytes), 0), capBytes: CAP_BYTES, sessions: data.filter((r) => r.windows_stored >= r.windows).length };
   }
 }
 
@@ -113,6 +122,11 @@ class DiskIndex implements SessionIndex {
   async complete() {
     const m = await this.load();
     return new Set(Object.entries(m.sessions).filter(([, s]) => s.windows > 0 && s.windowsStored >= s.windows).map(([k]) => Number(k)));
+  }
+  async usage() {
+    const m = await this.load();
+    const all = Object.values(m.sessions);
+    return { bytes: all.reduce((s, x) => s + x.bytes, 0), capBytes: CAP_BYTES, sessions: all.filter((s) => s.windows > 0 && s.windowsStored >= s.windows).length };
   }
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildSnapshot, buildStatic } from "@/lib/dashboard/snapshot";
 import type { CarDot } from "@/lib/dashboard/model";
@@ -112,7 +113,8 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
     <div className="page">
       <header className="masthead">
         <div>
-          <div className="hd" style={{ color: "var(--red-text)" }}>Race weekend dashboard</div>
+          <Link href="/" className="back">← All sessions</Link>
+          <div className="hd" style={{ color: "var(--red-text)" }}><Link href="/" className="home-link">Race weekend dashboard</Link></div>
           <h1>{meta.meeting.meeting_name}</h1>
           <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year} · {meta.source === "fixtures" ? "recorded fixtures" : "OpenF1 historical data"}</p>
         </div>

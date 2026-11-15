@@ -1,0 +1,59 @@
+"use client";
+
+import Link from "next/link";
+import type { HomeData } from "@/lib/home/data";
+import { SHAPE_VIEWBOX } from "@/lib/session/summary";
+import { useNow } from "./use-now";
+
+const two = (n: number) => String(n).padStart(2, "0");
+
+/** The next session with a countdown, in the viewer's time zone. */
+export function NextSession({ next }: { next: NonNullable<HomeData["next"]> }) {
+  const now = useNow();
+  const { meeting, session } = next;
+  const start = Date.parse(session.dateStart);
+  const end = Date.parse(session.dateEnd);
+  const live = now !== null && now >= start && now < end;
+  const left = now === null ? null : Math.max(0, start - now);
+  const parts = left === null ? null : { d: Math.floor(left / 86_400_000), h: Math.floor(left / 3_600_000) % 24, m: Math.floor(left / 60_000) % 60, s: Math.floor(left / 1000) % 60 };
+  const when =
+    now === null
+      ? new Date(start).toUTCString().replace(":00 GMT", " UTC").slice(0, -4)
+      : new Date(start).toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+
+  return (
+    <section className="panel hero" aria-labelledby="next-title">
+      <div className="hero-copy">
+        <div className="hd" style={{ color: "var(--red-text)" }}>{live ? "On track now" : "Next session"}{meeting.round ? ` · Round ${meeting.round}` : ""}</div>
+        <h2 id="next-title" className="hero-title">{meeting.name}</h2>
+        <p className="hero-sub">{session.name} · {meeting.circuit}</p>
+        <p className="muted" style={{ margin: 0 }}>{when}</p>
+        {live ? (
+          <p className="note" style={{ marginTop: 8 }}>Live timing needs OpenF1&apos;s paid tier. The replay is downloaded automatically about three hours after the session ends.</p>
+        ) : (
+          <div className="countdown" role="timer" aria-label={parts ? `${parts.d} days ${parts.h} hours ${parts.m} minutes to go` : "Countdown"}>
+            {(["d", "h", "m", "s"] as const).map((k) => (
+              <div key={k} className="countdown-cell">
+                <span className="countdown-num">{parts ? (k === "d" ? parts[k] : two(parts[k])) : "–"}</span>
+                <span className="countdown-unit">{{ d: "days", h: "hours", m: "min", s: "sec" }[k]}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="chip-row">
+          {meeting.sessions.map((s) => (
+            <span key={s.sessionKey} className={`chip-session ${s.sessionKey === session.sessionKey ? "on" : ""}`}>{s.name}</span>
+          ))}
+        </div>
+      </div>
+      {meeting.shape && (
+        <svg className="hero-track" viewBox={SHAPE_VIEWBOX} role="img" aria-label={`Outline of ${meeting.circuit}`}>
+          <path d={meeting.shape.path} className="track-glow" />
+          <path d={meeting.shape.path} className="track-line" />
+          <circle cx={meeting.shape.startX} cy={meeting.shape.startY} r={9} className="track-start" />
+        </svg>
+      )}
+      {!meeting.shape && <Link href="#calendar" className="note" style={{ alignSelf: "end" }}>No outline yet: drawn after the first session here is downloaded.</Link>}
+    </section>
+  );
+}
