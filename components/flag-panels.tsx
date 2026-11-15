@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { FlagView, Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 
@@ -61,7 +62,7 @@ function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
   );
 }
 
-export function FlagPanels({ view, snapshot }: { view: StaticView; snapshot: Snapshot }) {
+export const FlagPanels = memo(function FlagPanels({ view, snapshot }: { view: StaticView; snapshot: Snapshot }) {
   const sc = snapshot.safetyCar;
   const quiet = !sc && !snapshot.red && snapshot.flags.length === 0;
   return (
@@ -109,4 +110,4 @@ export function FlagPanels({ view, snapshot }: { view: StaticView; snapshot: Sna
       </section>
     </>
   );
-}
+});

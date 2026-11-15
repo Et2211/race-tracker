@@ -16,11 +16,15 @@ export function openf1Credentials(): { username: string; password: string } | nu
 let cached: { token: string; expiresAt: number } | null = null;
 let pending: Promise<string> | null = null;
 
-/** A current access token, or null without credentials. Renewed a minute before it expires. */
-export async function accessToken(): Promise<string | null> {
+/**
+ * A current access token, or null without credentials. Renewed when it has less than
+ * `validForMs` left (a minute by default; a relay asks for its whole lifetime, so a reconnect
+ * near its end does not present an expired token).
+ */
+export async function accessToken(validForMs = 60_000): Promise<string | null> {
   const credentials = openf1Credentials();
   if (!credentials) return null;
-  if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
+  if (cached && cached.expiresAt - validForMs > Date.now()) return cached.token;
   pending ??= (async () => {
     const res = await fetch(new URL("/token", BASE), {
       method: "POST",

@@ -34,6 +34,22 @@ export async function writeDerived(meta: SessionMeta): Promise<number> {
 }
 export const chunkKey = (sessionKey: number, index: number) => `sessions/${sessionKey}/chunk-${index}.json`;
 
+/**
+ * A stored session's metadata, kept for 10 minutes per server instance: downloading its windows
+ * one request at a time needs it each time, and it is a multi-MB file.
+ */
+const metaMemo = new Map<number, { at: number; meta: Promise<SessionMeta | null> }>();
+export function storedSessionMeta(sessionKey: number): Promise<SessionMeta | null> {
+  const hit = metaMemo.get(sessionKey);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.meta;
+  const meta = readJson<SessionMeta>(metaKey(sessionKey));
+  metaMemo.set(sessionKey, { at: Date.now(), meta });
+  meta.then((m) => {
+    if (!m) metaMemo.delete(sessionKey); // not stored yet: ask again next time
+  });
+  return meta;
+}
+
 
 export class NotReadyError extends Error {}
 
@@ -115,10 +131,11 @@ function once<T>(key: string, work: () => Promise<T>): Promise<T> {
 /** Step 1 of ingesting: everything except car telemetry, about 15 OpenF1 requests. */
 export function ingestMeta(sessionKey: number): Promise<SessionMeta> {
   const key = `meta:${sessionKey}`;
-  // A metadata download takes about a minute; a request waiting on another instance's gives up
-  // before the 300 s function limit.
+  // A metadata download takes about a minute. The lock is renewed while it runs, so a crashed
+  // holder is noticed within a minute; a waiter gives up after 150 s, leaving time for a full
+  // download of its own inside the 300 s function limit.
   return once(key, () =>
-    withDownloadLock(downloadLocks(), key, () => readJson<SessionMeta>(metaKey(sessionKey)), () => downloadMeta(sessionKey), { ttlSeconds: 240, waitMs: 240_000 }),
+    withDownloadLock(downloadLocks(), key, () => readJson<SessionMeta>(metaKey(sessionKey)), () => downloadMeta(sessionKey), { ttlSeconds: 60, waitMs: 150_000 }),
   );
 }
 
@@ -216,8 +233,8 @@ export function ingestWindow(meta: SessionMeta, index: number): Promise<Telemetr
   const key = `chunk:${meta.session.session_key}:${index}`;
   return once(key, () =>
     withDownloadLock(downloadLocks(), key, () => readJson<TelemetryChunk>(chunkKey(meta.session.session_key, index)), () => downloadWindow(meta, index), {
-      ttlSeconds: 150,
-      waitMs: 240_000,
+      ttlSeconds: 60,
+      waitMs: 150_000,
     }),
   );
 }

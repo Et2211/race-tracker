@@ -34,8 +34,12 @@ interface SessionIndex {
   complete(): Promise<Set<number>>;
   /** Bytes stored for sessions, the cap, and how many sessions are complete. */
   usage(): Promise<StorageUsage>;
+  /** Both of the above from one read. */
+  overview(): Promise<{ complete: Set<number>; usage: StorageUsage }>;
   /** Stored sessions at a circuit, newest first (for a live session's outline). */
   atCircuit(circuitKey: number): Promise<number[]>;
+  /** Set a session's counts from what is actually stored (counters can drift if a run is cut off). */
+  reconcile(sessionKey: number, counts: { windows: number; windowsStored: number; bytes: number }): Promise<void>;
 }
 
 export type StorageUsage = { bytes: number; capBytes: number; sessions: number };
@@ -71,9 +75,20 @@ class SupabaseIndex implements SessionIndex {
     return new Set(data.filter((r) => r.windows_stored >= r.windows).map((r) => r.session_key as number));
   }
   async usage() {
-    const { data, error } = await supabase().from("stored_sessions").select("bytes, windows, windows_stored");
+    return (await this.overview()).usage;
+  }
+  async overview() {
+    const { data, error } = await supabase().from("stored_sessions").select("session_key, bytes, windows, windows_stored");
     if (error) throw error;
-    return { bytes: data.reduce((s, r) => s + Number(r.bytes), 0), capBytes: CAP_BYTES, sessions: data.filter((r) => r.windows_stored >= r.windows).length };
+    const complete = new Set(data.filter((r) => r.windows_stored >= r.windows).map((r) => r.session_key as number));
+    return { complete, usage: { bytes: data.reduce((s, r) => s + Number(r.bytes), 0), capBytes: CAP_BYTES, sessions: complete.size } };
+  }
+  async reconcile(sessionKey: number, counts: { windows: number; windowsStored: number; bytes: number }) {
+    const { error } = await supabase()
+      .from("stored_sessions")
+      .update({ windows: counts.windows, windows_stored: counts.windowsStored, bytes: counts.bytes, updated_at: new Date().toISOString() })
+      .eq("session_key", sessionKey);
+    if (error) throw error;
   }
   async atCircuit(circuitKey: number) {
     const { data, error } = await supabase().from("stored_sessions").select("session_key").eq("circuit_key", circuitKey).order("year", { ascending: false }).order("session_key", { ascending: false }).limit(6);
@@ -130,10 +145,18 @@ class DiskIndex implements SessionIndex {
     const m = await this.load();
     return new Set(Object.entries(m.sessions).filter(([, s]) => s.windows > 0 && s.windowsStored >= s.windows).map(([k]) => Number(k)));
   }
+  async overview() {
+    return { complete: await this.complete(), usage: await this.usage() };
+  }
   async usage() {
     const m = await this.load();
     const all = Object.values(m.sessions);
     return { bytes: all.reduce((s, x) => s + x.bytes, 0), capBytes: CAP_BYTES, sessions: all.filter((s) => s.windows > 0 && s.windowsStored >= s.windows).length };
+  }
+  async reconcile(sessionKey: number, counts: { windows: number; windowsStored: number; bytes: number }) {
+    const m = await this.load();
+    m.sessions[sessionKey] = { windows: counts.windows, windowsStored: counts.windowsStored, bytes: counts.bytes };
+    await writeJson(this.key, m);
   }
   async atCircuit(circuitKey: number) {
     const m = await this.load();

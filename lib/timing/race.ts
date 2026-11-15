@@ -1,5 +1,6 @@
 import type { IntervalRow, Lap, PositionRow, SessionResult } from "@/lib/openf1/types";
 import { parseGap, type Gap } from "./gap";
+import { countUpTo, dateTimes, lapTimes } from "./time-index";
 import type { Mark } from "./qualifying";
 
 export type RaceRow = {
@@ -14,23 +15,31 @@ export type RaceRow = {
   lapTime: number | null;
 };
 
-const lapEnd = (lap: Lap) => (lap.date_start && lap.lap_duration !== null ? Date.parse(lap.date_start) + lap.lap_duration * 1000 : null);
 
-/** Latest row at or before `t` per driver. Rows must be sorted by date. */
+const driverCounts = new WeakMap<object, number>();
+
+/**
+ * Latest row at or before `t` per driver. Rows must be sorted by date. Finds where `t` falls by
+ * binary search and walks back until every driver is seen, instead of scanning from the start.
+ */
 function latestPerDriver<T extends { date: string; driver_number: number }>(rows: T[], t: number): Map<number, T> {
+  let drivers = driverCounts.get(rows);
+  if (drivers === undefined) {
+    drivers = new Set(rows.map((r) => r.driver_number)).size;
+    driverCounts.set(rows, drivers);
+  }
   const out = new Map<number, T>();
-  for (const row of rows) {
-    if (Date.parse(row.date) > t) break;
-    out.set(row.driver_number, row);
+  for (let i = countUpTo(dateTimes(rows), t) - 1; i >= 0 && out.size < drivers; i--) {
+    if (!out.has(rows[i].driver_number)) out.set(rows[i].driver_number, rows[i]);
   }
   return out;
 }
 
 /** The lap the leader is on at `t`: the highest lap number anyone has started. */
 export function leaderLap(laps: Lap[], t: number): number {
-  let lap = 0;
-  for (const l of laps) if (l.date_start && Date.parse(l.date_start) <= t && l.lap_number > lap) lap = l.lap_number;
-  return lap;
+  const { sortedStart, maxLapUpTo } = lapTimes(laps);
+  const n = countUpTo(sortedStart, t);
+  return n ? maxLapUpTo[n - 1] : 0;
 }
 
 /**
@@ -47,10 +56,8 @@ export function buildRaceTable(
 ): RaceRow[] {
   const order = latestPerDriver(positions, t);
   const gaps = latestPerDriver(intervals, t);
-  const completed = laps.filter((lap) => {
-    const end = lapEnd(lap);
-    return end !== null && end <= t;
-  });
+  const { end: ends } = lapTimes(laps);
+  const completed = laps.filter((_, i) => ends[i] <= t);
 
   const keys = ["duration_sector_1", "duration_sector_2", "duration_sector_3"] as const;
   const overall = [Infinity, Infinity, Infinity];
@@ -105,12 +112,13 @@ export type TrendSeries = { driver: number; points: { lap: number; gap: number }
  */
 export function gapTrend(laps: Lap[], drivers: number[], fromLap: number, toLap: number): TrendSeries[] {
   const starts = new Map<number, Map<number, number>>();
-  for (const lap of laps) {
-    if (!lap.date_start) continue;
+  const { start } = lapTimes(laps);
+  laps.forEach((lap, i) => {
+    if (Number.isNaN(start[i])) return;
     const byDriver = starts.get(lap.lap_number) ?? new Map<number, number>();
-    byDriver.set(lap.driver_number, Date.parse(lap.date_start));
+    byDriver.set(lap.driver_number, start[i]);
     starts.set(lap.lap_number, byDriver);
-  }
+  });
   return drivers.map((driver) => {
     const points: TrendSeries["points"] = [];
     for (let lap = fromLap; lap <= toLap; lap++) {

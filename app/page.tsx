@@ -39,7 +39,7 @@ async function Season({ searchParams }: PageProps<"/">) {
       </nav>
       <div className="row">
         {data.next ? (
-          <NextSession next={data.next} />
+          <NextSession next={data.next} meetings={data.meetings} />
         ) : (
           <section className="panel hero">
             <div className="hero-copy">
@@ -98,7 +98,7 @@ export default function Home(props: PageProps<"/">) {
           <p>Track map, sector times, gaps and flags for every race, sprint and qualifying session since 2023.</p>
         </div>
       </header>
-      <main style={{ display: "contents" }}>
+      <main className="page-main">
         <Suspense fallback={<section className="panel" aria-busy="true"><p className="note">Loading the season…</p></section>}>
           <Season {...props} />
         </Suspense>

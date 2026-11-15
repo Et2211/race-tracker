@@ -34,7 +34,7 @@ export async function refreshCalendar(year: number): Promise<number> {
   return rows.length;
 }
 
-export type DueSession = { session_key: number; meeting_name: string; session_name: string; download_attempts: number };
+export type DueSession = { session_key: number; meeting_name: string; session_name: string; download_attempts: number; date_end: string; year: number };
 
 export async function dueSessions(): Promise<DueSession[]> {
   const { data, error } = await supabase().rpc("due_sessions");
@@ -42,11 +42,23 @@ export async function dueSessions(): Promise<DueSession[]> {
   return data as DueSession[];
 }
 
-/** Record an automatic download attempt; `error` is null when it succeeded. */
-export async function recordAttempt(sessionKey: number, attempts: number, error: string | null) {
-  const { error: dbError } = await supabase()
+async function updateAttempt(sessionKey: number, fields: { download_attempts: number; last_error: string | null; last_attempt_at?: string }) {
+  const { error } = await supabase()
     .from("session_calendar")
-    .update({ download_attempts: error ? attempts + 1 : attempts, last_attempt_at: new Date().toISOString(), last_error: error, updated_at: new Date().toISOString() })
+    .update({ ...fields, updated_at: new Date().toISOString() })
     .eq("session_key", sessionKey);
-  if (dbError) throw dbError;
+  if (error) throw error;
+}
+
+/**
+ * Count an automatic download attempt before it starts, so a run cut off by the time limit still
+ * counts towards the limit of 8 and waits its 30 minutes before the next.
+ */
+export function startAttempt(sessionKey: number, attempts: number) {
+  return updateAttempt(sessionKey, { download_attempts: attempts + 1, last_attempt_at: new Date().toISOString(), last_error: "Started; did not report back (cut off by the time limit?)" });
+}
+
+/** The attempt's outcome: `error` null when the session is now fully stored (the attempt then does not count). */
+export function finishAttempt(sessionKey: number, attemptsBefore: number, error: string | null) {
+  return updateAttempt(sessionKey, { download_attempts: error ? attemptsBefore + 1 : attemptsBefore, last_error: error });
 }

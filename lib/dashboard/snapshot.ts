@@ -1,18 +1,19 @@
 import { battlesAt } from "@/lib/timing/battles";
-import { flagStateAt, logAt, logTone, STALE_AFTER_MS, type FlagGroup } from "@/lib/flags/state";
+import { flagStateAt, logTone, STALE_AFTER_MS, type FlagGroup } from "@/lib/flags/state";
 import { isRetiredAt, retirements } from "@/lib/incident/retired";
 import { incidentsNear, namedIncidents, type NamedIncident } from "@/lib/incident/messages";
 import { DETECTOR, findStoppedCars } from "@/lib/incident/stopped";
 import { flaggedStretch, splitByStretch } from "@/lib/incident/stretch";
 import type { Driver, Lap, RaceControl } from "@/lib/openf1/types";
-import { traceAt, type TelemetryIndex } from "@/lib/session/telemetry";
+import type { TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
 import { formatClock } from "@/lib/timing/format";
+import { countUpTo } from "@/lib/timing/time-index";
 import { buildQualifying } from "@/lib/timing/qualifying";
 import { buildRaceTable, classificationDifferences, gapTrend, leaderLap } from "@/lib/timing/race";
 import { placeMarshalSector } from "@/lib/track/markers";
-import { fitOutline, mapPointAt, MAP_HEIGHT, MAP_WIDTH, stretchPath, toMap, type MapTransform } from "@/lib/track/map";
-import type { CarDot, DriverInfo, FlagView, QualifyingView, Snapshot, TrackMapModel } from "./model";
+import { fitOutline, mapPointAt, MAP_HEIGHT, MAP_WIDTH, stretchPath, type MapTransform } from "@/lib/track/map";
+import type { DriverInfo, FlagView, LogEntry, QualifyingView, Snapshot, TrackMapModel } from "./model";
 
 export function driverInfo(drivers: Driver[]): Record<number, DriverInfo> {
   return Object.fromEntries(
@@ -32,8 +33,8 @@ export function driverInfo(drivers: Driver[]): Record<number, DriverInfo> {
 
 export type StaticView = { drivers: Record<number, DriverInfo>; map: TrackMapModel | null; transform: MapTransform | null; totalLaps: number | null };
 
-/** The parts of the view that do not change with time. */
-export function buildStatic(meta: SessionMeta): StaticView {
+/** The parts of the view that do not change with time. Only these fields are read, so callers can memo on them. */
+export function buildStatic(meta: Pick<SessionMeta, "drivers" | "kind" | "laps" | "outline" | "rotation">): StaticView {
   const drivers = driverInfo(meta.drivers);
   const totalLaps = meta.kind === "race" && meta.laps.length ? Math.max(...meta.laps.map((l) => l.lap_number)) : null;
   const outline = meta.outline;
@@ -193,8 +194,12 @@ function qualifyingView(meta: SessionMeta, t: number): QualifyingView | null {
     return { sessionName: meta.session.session_name, phases, ideal, current: phases.at(-1)?.phase ?? null, final: false };
   }
   if (meta.qualifying) {
-    const { phases, ideal } = buildQualifying(meta.qualifying.laps, meta.qualifying.raceControl);
-    return { sessionName: meta.qualifying.sessionName, phases, ideal, current: null, final: true };
+    // The qualifying that set a race's grid is over: work it out once.
+    const q = meta.qualifying;
+    return once(qualifyingCache, q, () => {
+      const { phases, ideal } = buildQualifying(q.laps, q.raceControl);
+      return { sessionName: q.sessionName, phases, ideal, current: null, final: true };
+    });
   }
   return null;
 }
@@ -211,9 +216,43 @@ function logId(row: RaceControl): string {
   return id;
 }
 
+/** Work that depends only on one array or object of the session, done once per instance of it. */
+function once<K extends object, V>(cache: WeakMap<K, V>, key: K, make: () => V): V {
+  let v = cache.get(key);
+  if (v === undefined) {
+    v = make();
+    cache.set(key, v);
+  }
+  return v;
+}
+const retirementCache = new WeakMap<object, Map<number, number>>();
+const incidentCache = new WeakMap<object, NamedIncident[]>();
+const qualifyingCache = new WeakMap<object, QualifyingView>();
+const NO_RETIREMENTS = new Map<number, number>();
+
+/** Race-control rows as log entries (blue flags left out), built once per session and cut at t. */
+const logCache = new WeakMap<object, { times: Float64Array; entries: LogEntry[] }>();
+function logUpTo(meta: SessionMeta, isRace: boolean, start: number, t: number): LogEntry[] {
+  const all = once(logCache, meta.raceControl, () => {
+    const rows = meta.raceControl.filter((row) => row.flag !== "BLUE");
+    const times = Float64Array.from(rows, (r) => Date.parse(r.date));
+    const entries = rows.map((row, i): LogEntry => ({
+      id: logId(row),
+      lap: isRace && times[i] >= start ? row.lap_number : null,
+      pre: isRace && times[i] < start,
+      time: formatClock(times[i]),
+      iso: new Date(times[i]).toISOString(),
+      text: row.message,
+      tone: logTone(row),
+    }));
+    return { times, entries };
+  });
+  return all.entries.slice(0, countUpTo(all.times, t)).reverse();
+}
+
 export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: TelemetryIndex, t: number): Snapshot {
   const state = flagStateAt(meta.raceControl, t);
-  const incidents = namedIncidents(meta.raceControl, meta.meeting.gmt_offset ?? meta.session.gmt_offset ?? "00:00:00");
+  const incidents = once(incidentCache, meta.raceControl, () => namedIncidents(meta.raceControl, meta.meeting.gmt_offset ?? meta.session.gmt_offset ?? "00:00:00"));
   const lap = leaderLap(meta.laps, t);
   const isRace = meta.kind === "race";
   const finish = meta.raceControl.find((r) => r.flag === "CHEQUERED");
@@ -221,20 +260,13 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
   // Gaps go stale after 15 s while racing; after the flag the last gaps are the final ones.
   const race = isRace ? buildRaceTable(meta.laps, meta.positions, meta.intervals, t, finished ? Infinity : undefined) : null;
 
-  const cars: CarDot[] = [];
-  // Cars that retired from a race leave the map once they have stopped for good.
-  const finalLaps = isRace ? retirements(meta.results, meta.laps) : new Map<number, number>();
+  // Cars that retired from a race leave the map once they have stopped for good (the dashboard
+  // draws the cars itself, every frame, leaving these out).
+  const finalLaps = isRace ? once(retirementCache, meta.results, () => retirements(meta.results, meta.laps)) : NO_RETIREMENTS;
   const retired: number[] = [];
   for (const [driver, finalLap] of finalLaps) {
     const trace = telemetry.traces.get(driver);
     if (finalLap === -Infinity || (trace && isRetiredAt(trace, finalLap, t))) retired.push(driver);
-  }
-  if (view.transform) {
-    for (const [driver, trace] of telemetry.traces) {
-      if (retired.includes(driver)) continue;
-      const p = traceAt(trace, t);
-      if (p) cars.push({ driver, ...toMap(view.transform, p) });
-    }
   }
 
   let trend: Snapshot["trend"] = null;
@@ -264,7 +296,6 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
     flags: [...state.groups].sort((a, b) => b.since - a.since).map((g) => flagView(meta, view, telemetry, g, t, incidents)),
     safetyCar: state.safetyCar ? { kind: state.safetyCar.kind, ending: state.safetyCar.ending } : null,
     red: state.red,
-    cars,
     retired,
     telemetryLoaded: telemetry.covers(t),
     positionsAvailable: telemetry.covers(t) && telemetry.hasPositionsNear(t),
@@ -276,14 +307,6 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
     watch,
     qualifying: qualifyingView(meta, t),
     // Every message so far, newest first; the panel scrolls.
-    log: logAt(meta.raceControl, t, Infinity).map((row) => ({
-      id: logId(row),
-      lap: isRace && Date.parse(row.date) >= start ? row.lap_number : null,
-      pre: isRace && Date.parse(row.date) < start,
-      time: formatClock(Date.parse(row.date)),
-      iso: new Date(Date.parse(row.date)).toISOString(),
-      text: row.message,
-      tone: logTone(row),
-    })),
+    log: logUpTo(meta, isRace, start, t),
   };
 }

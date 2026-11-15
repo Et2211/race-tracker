@@ -6,7 +6,8 @@ import { newestPerRecord } from "./topics";
 /** Where relays write the live feed and readers fetch it: Supabase, or memory without it (development). */
 export type LiveRowWrite = { topic: string; key: string; msg_id: number | null; payload: Record<string, unknown> };
 export type LiveRowRead = { topic: string; key: string; payload: Record<string, unknown>; rev: number };
-export type LiveStatus = { firstSecond: number | null; lastSecond: number | null; buckets: number; lastRev: number; relaysAlive: number; lastSeen: string | null };
+export type LiveStatus = { firstSecond: number | null; lastSecond: number | null; lastRev: number; lastBucketRev: number; relaysAlive: number; lastSeen: string | null };
+export type LiveBucketRead = { second: number; data: string; rev: number };
 export type Heartbeat = { relayId: string; sessionKey: number; subscribedAt: string | null; messages: number; note?: string | null };
 export type CalendarSession = { session_key: number; session_name: string; meeting_name: string; date_start: string; date_end: string };
 
@@ -18,6 +19,8 @@ export interface LiveStore {
   putBuckets(sessionKey: number, buckets: StoredBucket[]): Promise<number>;
   /** At most LIVE_PAGE rows changed after `rev`, oldest change first. */
   rowsSince(sessionKey: number, rev: number): Promise<LiveRowRead[]>;
+  /** At most LIVE_PAGE seconds of car data written or improved after `rev`, oldest change first. */
+  bucketsSince(sessionKey: number, rev: number): Promise<LiveBucketRead[]>;
   bucketsBetween(sessionKey: number, from: number, to: number): Promise<{ second: number; data: string }[]>;
   status(sessionKey: number): Promise<LiveStatus>;
   heartbeat(beat: Heartbeat): Promise<void>;
@@ -44,17 +47,21 @@ class SupabaseLiveStore implements LiveStore {
     const rows = await this.rpc<LiveRowRead[]>("live_rows_since", { p_session_key: sessionKey, p_rev: rev, p_limit: LIVE_PAGE });
     return rows.map((r) => ({ ...r, rev: Number(r.rev) }));
   }
+  async bucketsSince(sessionKey: number, rev: number) {
+    const rows = await this.rpc<LiveBucketRead[]>("live_buckets_since", { p_session_key: sessionKey, p_rev: rev, p_limit: LIVE_PAGE });
+    return rows.map((r) => ({ second: Number(r.second), data: r.data, rev: Number(r.rev) }));
+  }
   async bucketsBetween(sessionKey: number, from: number, to: number) {
     const rows = await this.rpc<{ second: number; data: string }[]>("live_buckets_between", { p_session_key: sessionKey, p_from: from, p_to: to });
     return rows.map((r) => ({ second: Number(r.second), data: r.data }));
   }
   async status(sessionKey: number): Promise<LiveStatus> {
-    const [s] = await this.rpc<{ first_second: number | null; last_second: number | null; buckets: number; last_rev: number | null; relays_alive: number; last_seen: string | null }[]>("live_status", { p_session_key: sessionKey });
+    const [s] = await this.rpc<{ first_second: number | null; last_second: number | null; last_rev: number | null; last_bucket_rev: number | null; relays_alive: number; last_seen: string | null }[]>("live_status", { p_session_key: sessionKey });
     return {
       firstSecond: s?.first_second === null || s?.first_second === undefined ? null : Number(s.first_second),
       lastSecond: s?.last_second === null || s?.last_second === undefined ? null : Number(s.last_second),
-      buckets: Number(s?.buckets ?? 0),
       lastRev: Number(s?.last_rev ?? 0),
+      lastBucketRev: Number(s?.last_bucket_rev ?? 0),
       relaysAlive: s?.relays_alive ?? 0,
       lastSeen: s?.last_seen ?? null,
     };
@@ -74,22 +81,28 @@ class SupabaseLiveStore implements LiveStore {
   }
 }
 
-/** Same rules as the SQL functions, in this process only. */
+/** Values that are set (not null) in a row: a REST row may fill in a version from the feed with fewer. */
+const setFields = (p: Record<string, unknown>) => Object.values(p).filter((v) => v !== null && v !== undefined).length;
+
+/** Same rules as the SQL functions (see the live migrations), in this process only. */
 class MemoryLiveStore implements LiveStore {
   private rows = new Map<string, { sessionKey: number; topic: string; key: string; msgId: number | null; payload: Record<string, unknown>; rev: number }>();
-  private buckets = new Map<string, { sessionKey: number; second: number; data: string }>();
+  private buckets = new Map<string, { sessionKey: number; second: number; samples: number; data: string; rev: number }>();
   private relays = new Map<string, Heartbeat & { lastSeen: number }>();
   private rev = 0;
 
   async upsertRows(sessionKey: number, rows: LiveRowWrite[]) {
     let changed = 0;
-    for (const r of rows) {
+    for (const r of newestPerRecord(rows)) {
       const id = `${sessionKey}|${r.topic}|${r.key}`;
       const old = this.rows.get(id);
-      const newer = r.msg_id !== null && (old?.msgId === null || old === undefined || r.msg_id > (old.msgId ?? -1));
-      const restRefresh = r.msg_id === null && (old === undefined || (old.msgId === null && JSON.stringify(old.payload) !== JSON.stringify(r.payload)));
-      if (!old || newer || restRefresh) {
-        this.rows.set(id, { sessionKey, topic: r.topic, key: r.key, msgId: r.msg_id, payload: r.payload, rev: ++this.rev });
+      const replace =
+        !old ||
+        (r.msg_id !== null && (old.msgId === null || r.msg_id > old.msgId)) ||
+        (r.msg_id === null && old.msgId === null && JSON.stringify(old.payload) !== JSON.stringify(r.payload)) ||
+        (r.msg_id === null && old.msgId !== null && setFields(r.payload) > setFields(old.payload));
+      if (replace) {
+        this.rows.set(id, { sessionKey, topic: r.topic, key: r.key, msgId: r.msg_id ?? old?.msgId ?? null, payload: r.payload, rev: ++this.rev });
         changed++;
       }
     }
@@ -99,8 +112,9 @@ class MemoryLiveStore implements LiveStore {
     let added = 0;
     for (const b of buckets) {
       const id = `${sessionKey}|${b.second}`;
-      if (this.buckets.has(id)) continue;
-      this.buckets.set(id, { sessionKey, second: b.second, data: b.data });
+      const old = this.buckets.get(id);
+      if (old && b.samples <= old.samples) continue;
+      this.buckets.set(id, { sessionKey, second: b.second, samples: b.samples, data: b.data, rev: ++this.rev });
       added++;
     }
     return added;
@@ -112,20 +126,28 @@ class MemoryLiveStore implements LiveStore {
       .slice(0, LIVE_PAGE)
       .map(({ topic, key, payload, rev: r }) => ({ topic, key, payload, rev: r }));
   }
+  async bucketsSince(sessionKey: number, rev: number) {
+    return [...this.buckets.values()]
+      .filter((b) => b.sessionKey === sessionKey && b.rev > rev)
+      .sort((a, b) => a.rev - b.rev)
+      .slice(0, LIVE_PAGE)
+      .map(({ second, data, rev: r }) => ({ second, data, rev: r }));
+  }
   async bucketsBetween(sessionKey: number, from: number, to: number) {
     return [...this.buckets.values()].filter((b) => b.sessionKey === sessionKey && b.second >= from && b.second < to).sort((a, b) => a.second - b.second).map(({ second, data }) => ({ second, data }));
   }
   async status(sessionKey: number) {
-    const seconds = [...this.buckets.values()].filter((b) => b.sessionKey === sessionKey).map((b) => b.second);
+    const buckets = [...this.buckets.values()].filter((b) => b.sessionKey === sessionKey);
+    const seconds = buckets.map((b) => b.second);
     const revs = [...this.rows.values()].filter((r) => r.sessionKey === sessionKey).map((r) => r.rev);
     const relays = [...this.relays.values()].filter((r) => r.sessionKey === sessionKey);
     const lastSeen = relays.length ? Math.max(...relays.map((r) => r.lastSeen)) : null;
     return {
       firstSecond: seconds.length ? Math.min(...seconds) : null,
       lastSecond: seconds.length ? Math.max(...seconds) : null,
-      buckets: seconds.length,
       lastRev: revs.length ? Math.max(...revs) : 0,
-      relaysAlive: relays.filter((r) => r.lastSeen > Date.now() - 20_000).length,
+      lastBucketRev: buckets.length ? Math.max(...buckets.map((b) => b.rev)) : 0,
+      relaysAlive: relays.filter((r) => r.lastSeen > Date.now() - 20_000 && !(r.note ?? "").startsWith("ended")).length,
       lastSeen: lastSeen === null ? null : new Date(lastSeen).toISOString(),
     };
   }

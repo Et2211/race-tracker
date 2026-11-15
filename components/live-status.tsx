@@ -2,7 +2,7 @@ import type { LiveStatusView } from "@/lib/live/http";
 import { formatClock } from "@/lib/timing/format";
 
 /** Whether the live feed is arriving, and how far behind the newest data the dashboard is. */
-export function LiveStatusLine({ status, behind, synced, onCatchUp }: { status: LiveStatusView | null; behind: number; synced: boolean; onCatchUp: () => void }) {
+export function LiveStatusLine({ status, behind, synced, following, onCatchUp }: { status: LiveStatusView | null; behind: number; synced: boolean; following: boolean; onCatchUp: () => void }) {
   let text: string;
   let tone: "ok" | "warn" | "off" = "ok";
   if (!status) {
@@ -27,7 +27,7 @@ export function LiveStatusLine({ status, behind, synced, onCatchUp }: { status: 
       <span className="live-dot" aria-hidden="true" />
       <strong>Live</strong>
       <span className="muted">{text}</span>
-      {seconds >= 3 && (
+      {!following && seconds >= 3 && (
         <span className="muted">
           · showing {seconds} s behind {synced ? "the data (synced to your stream)" : "the newest data"}{" "}
           <button className="seg" onClick={onCatchUp}>{synced ? "Back to your stream" : "Back to live"}</button>

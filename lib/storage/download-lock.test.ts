@@ -16,6 +16,12 @@ function table(): LockBackend & { claims: number } {
     async release(key: string, holder: string) {
       if (rows.get(key)?.holder === holder) rows.delete(key);
     },
+    async extend(key: string, holder: string, ttl: number) {
+      const row = rows.get(key);
+      if (row?.holder !== holder) return false;
+      row.expires = Date.now() + ttl * 1000;
+      return true;
+    },
     async running(key: string) {
       const row = rows.get(key);
       return Boolean(row && row.expires >= Date.now());
@@ -79,5 +85,23 @@ describe("download lock", () => {
     const locks = table();
     await locks.claim("meta:1", "crashed", -1);
     expect(await withDownloadLock(locks, "meta:1", async () => null, async () => "meta", opts)).toBe("meta");
+  });
+
+  it("keeps the lock while a slow download runs, so nobody else starts one", async () => {
+    const locks = table();
+    let downloads = 0;
+    let stored: string | null = null;
+    const slow = async () => {
+      downloads++;
+      await sleep(250); // longer than the lock's 0.1 s time-to-live
+      stored = "meta";
+      return stored;
+    };
+    const short = { ttlSeconds: 0.1, waitMs: 2000, pollMs: 10 };
+    const first = withDownloadLock(locks, "meta:1", async () => stored, slow, short);
+    await sleep(150); // the lock would have expired without the heartbeat
+    const second = withDownloadLock(locks, "meta:1", async () => stored, slow, short);
+    expect(await Promise.all([first, second])).toEqual(["meta", "meta"]);
+    expect(downloads).toBe(1);
   });
 });

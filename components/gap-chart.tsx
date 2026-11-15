@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 
@@ -8,7 +9,7 @@ const RIGHT = 380;
 const TOP = 20;
 const BOTTOM = 150;
 
-export function GapChart({ view, trend, snapshot }: { view: StaticView; trend: NonNullable<Snapshot["trend"]>; snapshot: Snapshot }) {
+export const GapChart = memo(function GapChart({ view, trend, snapshot }: { view: StaticView; trend: NonNullable<Snapshot["trend"]>; snapshot: Snapshot }) {
   const { fromLap, toLap, series } = trend;
   const leader = snapshot.leader !== null ? view.drivers[snapshot.leader]?.code : null;
   const drawn = series.filter((s) => s.points.length > 0);
@@ -53,4 +54,4 @@ export function GapChart({ view, trend, snapshot }: { view: StaticView; trend: N
       </svg>
     </div>
   );
-}
+});

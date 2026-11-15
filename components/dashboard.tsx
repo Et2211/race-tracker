@@ -11,18 +11,26 @@ import { useLiveSession } from "@/lib/replay/use-live";
 import { useSession } from "@/lib/replay/use-session";
 import { REACTION_MS, syncPoints, type SyncPoint } from "@/lib/replay/sync";
 import { jumpTargets } from "@/lib/replay/timeline";
+import { qualifyingClock, quietStretches } from "@/lib/timing/session-clock";
 import { traceAt } from "@/lib/session/telemetry";
+import type { SessionMeta } from "@/lib/session/types";
 import { formatClock, formatLapTime, formatSector } from "@/lib/timing/format";
 import type { Phase } from "@/lib/timing/qualifying";
 import { toMap } from "@/lib/track/map";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
+import { QualifyingClockPill, WatchLiveButton } from "./session-clock";
 import { LiveStatusLine } from "./live-status";
 import { SyncControl } from "./sync-control";
 import { WatchPanel } from "./watch-panel";
 import { SessionPicker } from "./session-picker";
 import { MarkLegend, QualifyingTable, RaceTable } from "./timing-tables";
 import { MapLegend, TrackMap } from "./track-map";
+
+const NO_QUIET: [number, number][] = [];
+const NO_LAPS: SessionMeta["laps"] = [];
+/** Jumping to a phase lands this long before its start, to see the pit exit open. */
+const PHASE_LEAD_MS = 10_000;
 
 type LoaderResult = ReturnType<typeof useSession> & { live?: { status: LiveStatusView | null } };
 
@@ -44,7 +52,7 @@ function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: 
   if (!meta) {
     return (
       <div className="page">
-        <main style={{ display: "contents" }}>
+        <main className="page-main">
         <div className="toolbar"><SessionPicker label="Choose a session" /></div>
         <section className="panel" aria-live="polite">
           {loader.state.phase === "error" ? (
@@ -69,16 +77,23 @@ function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: 
 }
 
 function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: LoaderResult; meta: NonNullable<LoaderResult["meta"]>; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
-  const view = useMemo(() => buildStatic(meta), [meta]);
-  const targets = useMemo(() => jumpTargets(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
+  // Live, the session object changes every second; these only change when their inputs do.
+  const staticLaps = mode === "live" ? NO_LAPS : meta.laps; // live shows no lap total
+  const view = useMemo(
+    () => buildStatic({ drivers: meta.drivers, kind: meta.kind, laps: staticLaps, outline: meta.outline, rotation: meta.rotation }),
+    [meta.drivers, meta.kind, staticLaps, meta.outline, meta.rotation],
+  );
+  const targets = useMemo(() => jumpTargets(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta.kind, meta.laps, meta.raceControl, meta.session.session_name]);
   const firstWindow = meta.source === "fixtures" ? meta.windows[0]?.from : null;
   const isLive = mode === "live";
   const liveStatus = loader.live?.status ?? null;
   const latest = liveStatus?.lastSecond !== null && liveStatus?.lastSecond !== undefined ? (liveStatus.lastSecond + 1) * 1000 : null;
-  const replayClock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start));
+  const quiet = useMemo(() => (meta.kind === "qualifying" ? quietStretches(meta.raceControl, meta.laps) : []), [meta.kind, meta.raceControl, meta.laps]);
+  const [skipBreaks, setSkipBreaks] = useState(true);
+  const replayClock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start), skipBreaks ? quiet : NO_QUIET);
   const liveClock = useLiveClock(latest, isLive);
   const clock = isLive ? liveClock : replayClock;
-  const sync = useMemo(() => syncPoints(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
+  const sync = useMemo(() => syncPoints(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta.kind, meta.laps, meta.raceControl, meta.session.session_name]);
   // The point the replay was synced to; any move other than a nudge or play/pause ends the sync.
   const [synced, setSynced] = useState<SyncPoint | null>(null);
   const seek = (to: number) => {
@@ -134,10 +149,15 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
   const finalQuali = meta.qualifying?.results ?? (meta.kind === "qualifying" ? meta.results : []);
   const qualiPos = finalQuali.find((r) => r.driver_number === selected)?.position ?? null;
   const prefix = meta.session.session_name.startsWith("Sprint") ? "SQ" : "Q";
-  const currentTarget = [...targets].reverse().find((x) => x.t <= t + 500);
+  // The phase or lap being shown; a phase counts from the moment a jump lands, just before it starts.
+  const currentTarget = [...targets].reverse().find((x) => x.t <= t + (meta.kind === "qualifying" ? PHASE_LEAD_MS : 0) + 500);
   const year = meta.session.year;
   const progress = loader.progress;
   const span = meta.span;
+  const pickerCurrent = useMemo(() => ({ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }), [year, meta.meeting.meeting_key, meta.session.session_key]);
+  const qClock = meta.kind === "qualifying" ? qualifyingClock(meta.raceControl, slowT, prefix === "SQ", year) : null;
+  // Screen readers hear the position when it changes meaningfully, not every second of playback.
+  const scrubText = `${meta.kind === "race" ? (snapshot.beforeStart ? "before the start" : `lap ${snapshot.lap}`) : (currentTarget?.label ?? "before the start")}, ${formatClock(Math.floor(slowT / 10_000) * 10_000)} UTC`;
 
   return (
     <div className="page">
@@ -149,7 +169,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year} · {meta.source === "fixtures" ? "recorded fixtures" : isLive ? "OpenF1 live feed" : "OpenF1 historical data"}</p>
         </div>
         <div className="pills" aria-live="polite">
-          {isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <span className="pill">{meta.source === "fixtures" ? "Fixture data" : "Replay"}</span>}
+          {isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <WatchLiveButton session={meta.session} />}
           {meta.kind === "race" ? <span className="pill">{snapshot.beforeStart ? "Before the start · grid and formation lap" : isLive ? `Lap ${snapshot.lap}` : `Lap ${snapshot.lap} / ${view.totalLaps ?? "?"}`}</span> : currentTarget && <span className="pill">{currentTarget.label}</span>}
           {snapshot.flags.map((f) => <span key={f.sector} className="pill flag">{f.flag} · Marshal sector {f.sector}</span>)}
           {snapshot.safetyCar && <span className="pill flag">{snapshot.safetyCar.kind === "VSC" ? "Virtual safety car" : "Safety car"}</span>}
@@ -158,74 +178,90 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
         </div>
       </header>
 
-      <main style={{ display: "contents" }}>
+      <main className="page-main">
       <div className="toolbar" role="region" aria-label="Session and replay controls">
-        <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={{ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }} />
-        <nav aria-label="Data mode" className="segmented">
-          {isLive ? <span className="seg" aria-current="page">Live</span> : <Link className="seg" href={`/live/${meta.session.session_key}`}>Live</Link>}
-          {isLive ? <Link className="seg" href={`/session/${meta.session.session_key}`}>Replay</Link> : <span className="seg" aria-current="page">Replay</span>}
-        </nav>
-        {isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} onCatchUp={liveClock.toTarget} />}
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-          <button className="tab" onClick={() => clock.setPlaying(!clock.playing)} aria-label={clock.playing ? "Pause" : "Play"}>{clock.playing ? "Pause" : "Play"}</button>
-          {!isLive && <div role="group" aria-label="Playback speed" className="segmented">
-            {SPEEDS.map((s) => (
-              <button key={s} className="seg" style={{ padding: "0 12px" }} aria-pressed={clock.speed === s} onClick={() => {
-                if (s !== clock.speed) setSynced(null);
-                clock.setSpeed(s as Speed);
-              }}>{s}×</button>
-            ))}
-          </div>}
-        </div>
-        <div className="scrub">
-          <label htmlFor="scrub">
-            {isLive ? "Live " : "Replay "}{meta.kind === "race" ? (!snapshot.beforeStart ? <>lap <strong>{snapshot.lap}</strong></> : <strong>before the start</strong>) : <strong>{currentTarget?.label ?? "before the start"}</strong>}
-            <span className="muted"> · {formatClock(t)} UTC</span>
-          </label>
-          <input
-            id="scrub"
-            type="range"
-            min={0}
-            max={Math.max(0, Math.round(((isLive ? Math.max(latest ?? clock.t, clock.t) : span.end) - span.start) / 1000))}
-            step={1}
-            value={Math.round((t - span.start) / 1000)}
-            onChange={(e) => seek(span.start + Number(e.target.value) * 1000)}
-            aria-valuetext={`${formatClock(t)} UTC${meta.kind === "race" ? `, lap ${snapshot.lap}` : ""}`}
+        <div className="toolbar-row">
+          <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={pickerCurrent} />
+          {isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} following={liveClock.following} onCatchUp={liveClock.toTarget} />}
+          {qClock && <QualifyingClockPill clock={qClock} prefix={prefix} live={isLive} t={slowT} />}
+          <span className="toolbar-spacer" />
+          <SyncControl
+            live={isLive}
+            points={sync}
+            synced={synced}
+            playing={clock.playing}
+            onSync={(p) => {
+              if (isLive) liveClock.syncTo(p.t + REACTION_MS);
+              else {
+                replayClock.seek(p.t + REACTION_MS);
+                replayClock.setSpeed(1);
+                replayClock.setPlaying(true);
+              }
+              setSynced(p);
+            }}
+            onNudge={(ms) => (isLive ? liveClock.nudge(ms) : replayClock.seek(replayClock.t + ms))}
           />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <label htmlFor="jump" className="muted" style={{ fontSize: 14 }}>Jump to</label>
-          <select id="jump" className="picker" value="" onChange={(e) => e.target.value && seek(Number(e.target.value))}>
-            <option value="">{meta.kind === "qualifying" ? "Phase…" : "Lap…"}</option>
-            {targets.map((x) => <option key={x.label} value={x.t}>{x.label}</option>)}
-          </select>
+        <div className="toolbar-row">
+          <button className="tab" onClick={() => clock.setPlaying(!clock.playing)} aria-label={clock.playing ? "Pause" : "Play"}>{clock.playing ? "Pause" : "Play"}</button>
+          {!isLive && (
+            <div role="group" aria-label="Playback speed" className="segmented">
+              {SPEEDS.map((s) => (
+                <button key={s} className="seg" aria-pressed={clock.speed === s} onClick={() => {
+                  if (s !== clock.speed) setSynced(null);
+                  clock.setSpeed(s as Speed);
+                }}>{s}×</button>
+              ))}
+            </div>
+          )}
+          {meta.kind === "qualifying" && targets.length > 0 ? (
+            <div role="group" aria-label="Jump to a phase" className="segmented">
+              {targets.map((x) => (
+                <button key={x.label} className="seg" aria-pressed={currentTarget?.label === x.label} onClick={() => seek(x.t - PHASE_LEAD_MS)}>{x.label}</button>
+              ))}
+            </div>
+          ) : (
+            <label className="control">
+              <span className="muted">Jump to</span>
+              <select className="picker" value="" onChange={(e) => e.target.value && seek(Number(e.target.value))}>
+                <option value="">Lap…</option>
+                {targets.map((x) => <option key={x.label} value={x.t}>{x.label}</option>)}
+              </select>
+            </label>
+          )}
+          {!isLive && quiet.length > 0 && (
+            <label className="control check">
+              <input type="checkbox" checked={skipBreaks} onChange={(e) => setSkipBreaks(e.target.checked)} />
+              Skip breaks
+            </label>
+          )}
+          <span className="toolbar-spacer" />
+          <span className="clock-label" aria-hidden="true">
+            {isLive ? "Live " : "Replay "}
+            {meta.kind === "race" ? (!snapshot.beforeStart ? <>lap <strong>{snapshot.lap}</strong></> : <strong>before the start</strong>) : <strong>{currentTarget?.label ?? "before the start"}</strong>}
+            <span className="muted"> · {formatClock(t)} UTC</span>
+          </span>
         </div>
-        <SyncControl
-          live={isLive}
-          points={sync}
-          synced={synced}
-          playing={clock.playing}
-          onSync={(p) => {
-            clock.seek(p.t + REACTION_MS);
-            if (isLive) liveClock.keepDelay(p.t + REACTION_MS);
-            clock.setSpeed(1);
-            clock.setPlaying(true);
-            setSynced(p);
-          }}
-          onNudge={(ms) => {
-            clock.seek(clock.t + ms);
-            if (isLive) liveClock.keepDelay(clock.t + ms);
-          }}
+        <input
+          className="scrubber"
+          type="range"
+          aria-label="Session time"
+          min={0}
+          max={Math.max(0, Math.round(((isLive ? Math.max(latest ?? clock.t, clock.t) : span.end) - span.start) / 1000))}
+          step={1}
+          value={Math.round((t - span.start) / 1000)}
+          onChange={(e) => seek(span.start + Number(e.target.value) * 1000)}
+          aria-valuetext={scrubText}
         />
-        <div className="muted" style={{ fontSize: 13, flexBasis: "100%" }} aria-live="polite">
+        <div className="toolbar-note muted">
           {isLive ? <>Car data: {progress.ready} min received · retirements and the official classification appear once OpenF1 publishes results</> : <>Car data {progress.ready} of {progress.total} parts loaded</>}
           {meta.source === "fixtures" ? " (only short recorded windows exist in offline mode)" : ""}
           {progress.failed > 0 && (
-            <> · <span style={{ color: "var(--red-text)" }}>download failed: {progress.error}</span> <button className="seg" onClick={loader.retryChunks}>Retry</button></>
+            <> · <span role="alert" style={{ color: "var(--red-text)" }}>download failed: {progress.error}</span> <button className="seg small" onClick={loader.retryChunks}>Retry</button></>
           )}
           {meta.source === "fixtures" && meta.windows.length > 0 && (
             <> · Recorded windows: {meta.windows.map((w) => (
-              <button key={w.index} className="seg" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => seek(w.from + 15_000)}>{formatClock(w.from)}</button>
+              <button key={w.index} className="seg small" onClick={() => seek(w.from + 15_000)}>{formatClock(w.from)}</button>
             ))}</>
           )}
         </div>

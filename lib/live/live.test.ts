@@ -3,7 +3,7 @@ import type { CarDataRow, Lap, LocationRow, RaceControl } from "@/lib/openf1/typ
 import { assembleMeta } from "@/lib/session/assemble";
 import type { SessionMeta } from "@/lib/session/types";
 import { fixture } from "@/test/fixtures";
-import { BucketCollector, decodeBucket, encodeBucket, LATE_MS } from "./buckets";
+import { BucketCollector, decodeBucket, encodeBucket, LATE_MS, QUIET_MS } from "./buckets";
 import { mergeLiveRows } from "./merge";
 import { newestPerRecord, rowKey } from "./topics";
 
@@ -17,25 +17,41 @@ describe("live telemetry buckets", () => {
     expect(decodeBucket(b.second, encodeBucket(b).data)).toEqual(b);
   });
 
-  it("are identical from two overlapping relays, each skipping the second it joined in", () => {
+  it("are identical from two overlapping relays, each starting at its first complete second", () => {
     const stream = Array.from({ length: 40 }, (_, i) => i * 250).flatMap((ms) => [loc(1, ms), loc(44, ms + 10)]);
     const early = new BucketCollector();
+    early.setSubscribed(T0 - 2000);
     const late = new BucketCollector();
-    for (const row of stream) early.add("location", row);
-    for (const row of stream.filter((r) => Date.parse(r.date) >= T0 + 3600)) late.add("location", row); // joins mid-second 3
-    const latest = T0 + 10_000 + LATE_MS;
-    const a = new Map(early.takeClosed(latest).map((b) => [b.second, encodeBucket(b).data]));
-    const b = new Map(late.takeClosed(latest).map((b) => [b.second, encodeBucket(b).data]));
+    late.setSubscribed(T0 + 3600); // subscribed during second 3
+    for (const row of stream) early.add("location", row, Date.parse(row.date));
+    for (const row of stream.filter((r) => Date.parse(r.date) >= T0 + 3600)) late.add("location", row, Date.parse(row.date));
+    const now = T0 + 10_000;
+    const a = new Map(early.takeClosed(now).map((b) => [b.second, encodeBucket(b).data]));
+    const b = new Map(late.takeClosed(now).map((b) => [b.second, encodeBucket(b).data]));
     expect([...b.keys()][0]).toBe(T0 / 1000 + 4); // second 3 was partial for the late relay
     for (const [second, data] of b) expect(a.get(second)).toBe(data);
   });
 
   it("hold a second open until samples for it can no longer arrive", () => {
     const c = new BucketCollector();
-    c.add("location", loc(1, 0)); // joins at second 0, so second 1 is the first whole one
-    c.add("location", loc(1, 1100));
-    expect(c.takeClosed(T0 + 2000 + LATE_MS - 1)).toEqual([]);
+    c.setSubscribed(T0 - 1000);
+    c.add("location", loc(1, 0), T0); // joins in second 0, so second 1 is the first whole one
+    c.add("location", loc(1, 1100), T0 + 1100);
+    expect(c.takeClosed(T0 + 1100)).toEqual([]);
+    c.add("location", loc(1, 2000 + LATE_MS), T0 + 2000 + LATE_MS);
     expect(c.takeClosed(T0 + 2000 + LATE_MS).map((b) => b.second)).toEqual([T0 / 1000 + 1]);
+  });
+
+  it("wait for the slower data type, unless it has gone quiet", () => {
+    const c = new BucketCollector();
+    c.setSubscribed(T0 - 1000);
+    c.add("location", loc(1, 500), T0 + 500); // first sample in second 0: second 1 is the first whole one
+    c.add("location", loc(1, 1200), T0 + 1200);
+    c.add("car_data", car(1, 1300), T0 + 1300);
+    c.add("car_data", car(1, 11_000), T0 + 11_000); // car data has run ~10 s ahead of positions
+    expect(c.takeClosed(T0 + 11_000)).toEqual([]); // positions were heard 9.8 s ago: still waited for
+    // Positions unheard of for longer than QUIET_MS: car data alone closes the seconds.
+    expect(c.takeClosed(T0 + 1200 + QUIET_MS + 1).map((b) => b.second)).toContain(T0 / 1000 + 1);
   });
 });
 
@@ -91,5 +107,18 @@ describe("live rows", () => {
       { topic: "laps", key: "63|11", msg_id: null, payload: { v: 3 } },
     ];
     expect(newestPerRecord(rows).map((r) => r.payload)).toEqual([{ v: 2 }, { v: 3 }]);
+  });
+
+  it("do not let one update's additions leak into another applied to the same session", () => {
+    // React's StrictMode runs a state update twice on the same input; any shared bookkeeping
+    // between the two runs would place records wrongly.
+    const lap = fixture<Lap[]>(madrid, "laps").find((l) => l.lap_number === 10 && l.driver_number === 63)!;
+    const start = mergeLiveRows(base(), [{ topic: "laps", payload: { ...lap, lap_number: 9 } }]);
+    mergeLiveRows(start, [{ topic: "laps", payload: lap }]); // adds lap 10
+    const other = mergeLiveRows(start, [
+      { topic: "laps", payload: { ...lap, lap_number: 11 } },
+      { topic: "laps", payload: lap },
+    ]);
+    expect(other.laps.map((l) => l.lap_number)).toEqual([9, 10, 11]);
   });
 });

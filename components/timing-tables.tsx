@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import type { Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import type { RaceRow } from "@/lib/timing/race";
@@ -46,7 +46,7 @@ function DriverCell({ view, driver, selected, onSelect, showName, tag }: Select 
   );
 }
 
-export function QualifyingTable({ view, phase, t, selected, onSelect }: Select & { view: StaticView; phase: QualifyingPhase; t: number }) {
+export const QualifyingTable = memo(function QualifyingTable({ view, phase, t, selected, onSelect }: Select & { view: StaticView; phase: QualifyingPhase; t: number }) {
   const body = useRef<HTMLTableSectionElement>(null);
   useRowFlip(body, `${phase.phase}:${phase.rows.map((r) => r.driver).join(",")}:${phase.noTime.join(",")}`, t);
   return (
@@ -82,9 +82,9 @@ export function QualifyingTable({ view, phase, t, selected, onSelect }: Select &
       </table>
     </div>
   );
-}
+});
 
-export function RaceTable({ view, rows, snapshot, selected, onSelect }: Select & { view: StaticView; rows: RaceRow[]; snapshot: Snapshot }) {
+export const RaceTable = memo(function RaceTable({ view, rows, snapshot, selected, onSelect }: Select & { view: StaticView; rows: RaceRow[]; snapshot: Snapshot }) {
   const body = useRef<HTMLTableSectionElement>(null);
   useRowFlip(body, rows.map((r) => r.driver).join(","), snapshot.t);
   const tags = new Map<number, string>();
@@ -121,4 +121,4 @@ export function RaceTable({ view, rows, snapshot, selected, onSelect }: Select &
       </table>
     </div>
   );
-}
+});

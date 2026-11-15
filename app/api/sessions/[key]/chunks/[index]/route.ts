@@ -1,4 +1,5 @@
-import { errorJson, gzipJson, parseKey } from "@/lib/session/http";
+import { gzipSync } from "node:zlib";
+import { badRequest, errorJson, gzipJson, parseKey } from "@/lib/session/http";
 import { ensureChunk, storedChunk } from "@/lib/session/source";
 
 // One 15-minute window: two OpenF1 requests of up to ~10 MB each.
@@ -9,14 +10,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/sessions/[key]/
   const { key, index } = await ctx.params;
   const k = parseKey(key);
   const i = /^\d{1,3}$/.test(index) ? Number(index) : null;
-  if (k === null || i === null) return Response.json({ error: "Bad request" }, { status: 400 });
+  if (k === null || i === null) return badRequest("Bad request");
   try {
-    let raw = await storedChunk(k, i);
-    if (!raw) {
-      await ensureChunk(k, i);
-      raw = await storedChunk(k, i);
-    }
-    return raw ? gzipJson(raw, "immutable") : Response.json({ error: "Stored chunk is missing" }, { status: 500 });
+    const raw = (await storedChunk(k, i)) ?? gzipSync(JSON.stringify(await ensureChunk(k, i)));
+    return gzipJson(raw, "immutable");
   } catch (e) {
     return errorJson(e);
   }

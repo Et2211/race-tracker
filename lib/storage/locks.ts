@@ -15,6 +15,11 @@ export function downloadLocks(): LockBackend {
       const { error } = await supabase().rpc("release_download", { p_key: key, p_holder: holder });
       if (error) throw error;
     },
+    async extend(key, holder, ttlSeconds) {
+      const { data, error } = await supabase().rpc("extend_download", { p_key: key, p_holder: holder, p_ttl_seconds: ttlSeconds });
+      if (error) throw error;
+      return data === true;
+    },
     async running(key) {
       const { data, error } = await supabase().rpc("download_running", { p_key: key });
       if (error) throw error;

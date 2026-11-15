@@ -191,3 +191,33 @@ Excluded by the brief and needs the paid OpenF1 tier. M1 §11 has the relay desi
 - **Testing without an account.** `npm run fake-openf1` serves the token endpoint, REST (only rows up to "now") and an MQTT broker replaying a stored race in real time with `_id`/`_key`, laps arriving in several versions. `npm run test:live` runs three overlapping relays against it in memory and checks the result against the source; it fails as it should when the relays are shortened so they no longer overlap (20 seconds missing, 4 laps stale). Against Supabase, five relays over five minutes stored 984 of 985 seconds; the one missing second has no data in the stored race either.
 - **Day one.** Add the credentials to `.env.local` and Vercel, schedule `race-tracker-live-relay` from `supabase/cron.sql`, and run `npm run live:check` during a session to see the real topics and message shapes.
 - Checks: 82 unit tests, 34 end-to-end runs, `npm run test:live`, lint and typecheck clean.
+
+## Review fixes, toolbar and qualifying clock (2026-11-15, branch `live-mode`)
+
+Four review agents (live mode; data and storage; replay performance; homepage and tests) reported; everything on the combined list was fixed except where noted.
+
+**Live mode**
+- Migration `20261115200000_live_fixes.sql` (applied): writes take a per-session advisory lock so revisions become visible in order (a viewer could otherwise skip a row for good); seconds of car data carry a revision and a version with more samples replaces a partial one; a REST row may fill fields a feed row lacks but never remove any; ended relays no longer count as alive; `live_clear_downloaded()`. Migration `20261115210000_lock_heartbeat_and_clear.sql` (applied): `extend_download` for lock heartbeats, and `live_clear` fixed (Supabase refuses a bare DELETE from the API, so the cleanup after a download would have failed; found by running `test:live` against Supabase).
+- Relays: a relay's first complete second is the later of its subscription and its first sample; a second closes only when every data type still arriving has moved 4 s past it (a type quiet for 10 s no longer holds things up); failed writes keep their rows and seconds and retry; the gap fill runs whenever stored data is over 15 s old, retries three times and survives one topic failing; the token is asked for for the relay's whole life and refreshed before a reconnect.
+- Browser: car data is read "changed since revision" (so gap fills and improved seconds still arrive) after loading the last two minutes; scrolling back loads earlier seconds; polling pauses in a hidden tab. `TelemetryIndex` appends in place instead of re-copying everything per piece. `mergeLiveRows` replaces only the arrays of topics that changed and appends in place. The live clock stays ~1 s behind the newest data so cars move smoothly (they moved once a second), catches up at 1.5× while following, and `syncTo` fixes syncing while paused. `/api/live/<key>` only serves the session on now or one with live data, and caches stored reads.
+- `npm run test:live` now also runs a viewer polling the store and a 20 s gap that the next relay must fill; it passes in memory and against Supabase (`TEST_LIVE_SUPABASE=1`).
+
+**Storage and cost**
+- The download job lists a session's stored files instead of downloading each window to check it, and sets the counts from the listing when complete (a missed counter update could otherwise re-download a race every 30 minutes for 14 days, ~3 GB of egress). Attempts are recorded before starting. Locks are 60 s with a heartbeat every 20 s; waiters give up at 150 s.
+- Session data is `public` (telemetry a year, metadata 5 min in the browser / 1 h at the CDN), so Vercel's CDN can serve it; errors are `no-store`. Routes send what they just built after a first download instead of reading it back; window downloads reuse the metadata for 10 minutes.
+- Daily calendar job: fills missing championship tables, clears live rows of downloaded sessions, retries MultiViewer for the last two weeks, rebuilds the homepage season summary. `cron.sql`: calendar timeout 295 s, pruning of `cron.job_run_details`.
+- OpenF1: a 429 holds back every request from the instance; a season's list counts as final only if fetched after the season; an OpenF1 failure falls back to the stored list.
+- Homepage: one stored season summary per year (`home/v1/<year>.json`; outlines, winners, standings, points history) rebuilt when out of date, so a render reads one file and one database query instead of ~70; standings fall back to the newest cached round; empty standings are remembered for an hour; the next session is picked again in the browser.
+
+**Replay performance**
+- Panels re-render only when their inputs change (5 times a second at most, not every frame). Rows are indexed by time once per array and found by binary search (race table, leader's lap, battles, gap trend, log); the race-control log, the weekend's qualifying table, incidents and retirements are built once per session. The stopped-car scan stops at the end of its window. `buildStatic` is memoised on the fields it reads.
+
+**Toolbar and qualifying**
+- Two rows with a full-width scrubber; one shared style for toggles whatever element they are. The Live/Replay switch is gone: "Watch live" shows in the corner only while a session is on.
+- Qualifying: a session-clock pill (time left in the phase, stopped under a red flag, the next phase's start), Q1/Q2/Q3 buttons that land 10 s before each start, and "Skip breaks" (on by default) that plays straight over the breaks between phases and red-flag stoppages. Phase lengths come from the data, or the format (Q1 18, Q2 15, Q3 13 min from 2026, 12 before; sprint 12/10/8).
+
+**Tests and accessibility**: the points chart has a table alternative; cancelled rounds keep normal contrast; `<main>` is a real landmark; the scrubber's spoken value changes every 10 s, not every second; e2e homepage tests pin `?season=2026`; fixed waits replaced; the e2e store is cleared each run; a 360 px phone project runs the layout and axe tests.
+
+**Not done**: metadata is still unzipped per request to apply learned marshal sectors (now behind the CDN cache); reviewer extras not on the list (24 h results refresh, a shared rate-limit row, Float32 telemetry). Whether `after()` keeps a relay alive for 150 s on Vercel needs a preview deploy to prove.
+
+Checks: 97 unit tests, 37 end-to-end runs, `test:live` (memory and Supabase), lint and typecheck clean.

@@ -79,7 +79,7 @@ export function PointsChart({ progression, year }: { progression: Progression; y
           <rect x={LEFT} y={TOP} width={RIGHT - LEFT} height={BOTTOM - TOP} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
         </svg>
         {hover !== null && (
-          <div className="tooltip" style={{ left: `${(x(hover) / W) * 100}%` }} role="status">
+          <div className="tooltip" style={{ left: `${Math.min(86, Math.max(14, (x(hover) / W) * 100))}%` }} role="status">
             <div className="hd" style={{ marginBottom: 4 }}>R{rounds[hover].round} · {rounds[hover].label}</div>
             {[...series]
               .sort((a, b) => (b.points[hover] ?? -1) - (a.points[hover] ?? -1))
@@ -93,6 +93,27 @@ export function PointsChart({ progression, year }: { progression: Progression; y
           </div>
         )}
       </div>
+      <details className="chart-table">
+        <summary>Points by round as a table</summary>
+        <div className="scroll" tabIndex={0} role="region" aria-label="Points by round">
+          <table className="timing">
+            <thead>
+              <tr>
+                <th scope="col" className="left">Driver</th>
+                {rounds.map((r) => <th key={r.round} scope="col" title={r.label}>R{r.round}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {series.map((s) => (
+                <tr key={s.driver}>
+                  <th scope="row" className="left">{s.name || s.code} #{s.driver}</th>
+                  {s.points.map((p, i) => <td key={i} className="num">{p ?? "–"}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
       {progression.missing > 0 && <p className="note">{progression.missing} round{progression.missing > 1 ? "s are" : " is"} not drawn yet: their standings are fetched by the daily calendar job.</p>}
     </section>
   );

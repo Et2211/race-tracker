@@ -1,4 +1,5 @@
 import type { Lap, Stint } from "@/lib/openf1/types";
+import { lapTimes } from "./time-index";
 
 /**
  * Pairs of cars worth watching at a moment of a race: cars close enough to fight (within a
@@ -79,10 +80,11 @@ const WINDOW = 4;
 export function battlesAt(laps: Lap[], order: number[], t: number, { stints = null, limit = 3 }: { stints?: Stint[] | null; limit?: number } = {}): Battle[] {
   const starts = new Map<number, Map<number, number>>();
   const pitOut = new Map<number, number[]>();
-  for (const lap of laps) {
-    if (!lap.date_start) continue;
-    const at = Date.parse(lap.date_start);
-    if (at > t) continue;
+  const { start } = lapTimes(laps);
+  for (let li = 0; li < laps.length; li++) {
+    const lap = laps[li];
+    const at = start[li];
+    if (Number.isNaN(at) || at > t) continue;
     const mine = starts.get(lap.driver_number) ?? new Map<number, number>();
     mine.set(lap.lap_number, at);
     starts.set(lap.driver_number, mine);

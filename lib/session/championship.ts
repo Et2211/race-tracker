@@ -34,8 +34,13 @@ const key = (sessionKey: number) => `championship/${sessionKey}.json`;
 
 export const cachedStandings = (sessionKey: number) => readJson<Standings>(key(sessionKey));
 
+/** Sessions OpenF1 had no table for, remembered for an hour per server instance so a homepage miss doesn't ask again. */
+const noTable = new Map<number, number>();
+
 /** Standings after a session: cached, or fetched from OpenF1 (3 requests) and cached once final. */
 export async function standingsAfter(sessionKey: number, dateEnd: string): Promise<Standings | null> {
+  const asked = noTable.get(sessionKey);
+  if (asked && Date.now() - asked < 60 * 60_000) return null;
   const cached = await cachedStandings(sessionKey);
   if (cached?.people) return cached;
   if (cached) {
@@ -49,7 +54,10 @@ export async function standingsAfter(sessionKey: number, dateEnd: string): Promi
     openf1<TeamRow>("championship_teams", { session_key: sessionKey }),
     openf1<Driver>("drivers", { session_key: sessionKey }),
   ]);
-  if (!drivers.length) return null;
+  if (!drivers.length) {
+    noTable.set(sessionKey, Date.now());
+    return null;
+  }
   const standings: Standings = {
     sessionKey,
     drivers: drivers

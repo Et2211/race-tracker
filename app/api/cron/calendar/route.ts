@@ -1,10 +1,18 @@
 import { connection } from "next/server";
 import { refreshCalendar } from "@/lib/session/calendar";
+import { refreshSeason } from "@/lib/home/data";
+import { clearDownloadedLive, fillStandings, retryMultiViewer } from "@/lib/session/maintenance";
 import { cronAuthorized } from "@/lib/session/cron-auth";
 import { errorJson } from "@/lib/session/http";
 import { supabaseConfigured } from "@/lib/storage/supabase";
 
-/** Daily: copy this season's (and, from December, next season's) schedule into the calendar. */
+export const maxDuration = 300;
+
+/**
+ * Daily: copy this season's (and, from December, next season's) schedule into the calendar, then
+ * upkeep: championship tables not cached yet, live rows of sessions since downloaded, and
+ * MultiViewer circuit files for recent sessions that missed them.
+ */
 export async function GET(req: Request) {
   await connection();
   if (!cronAuthorized(req)) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -14,7 +22,13 @@ export async function GET(req: Request) {
     const years = [now.getUTCFullYear(), ...(now.getUTCMonth() === 11 ? [now.getUTCFullYear() + 1] : [])];
     const sessions: Record<number, number> = {};
     for (const year of years) sessions[year] = await refreshCalendar(year);
-    return Response.json({ sessions });
+    // Upkeep; each part reports its own failure without stopping the others.
+    const attempt = async <T,>(job: () => Promise<T>) => job().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+    const standings = await attempt(() => fillStandings(now.getUTCFullYear()));
+    const liveCleared = await attempt(clearDownloadedLive);
+    const multiviewer = await attempt(retryMultiViewer);
+    const home = await attempt(() => refreshSeason(now.getUTCFullYear()));
+    return Response.json({ sessions, standings, liveCleared, multiviewer, home: home ?? "refreshed" });
   } catch (e) {
     return errorJson(e);
   }

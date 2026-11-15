@@ -9,7 +9,7 @@ import { readJson } from "@/lib/storage/store";
 import { mergeLiveRows } from "./merge";
 import { LIVE_PAGE, type LiveStore } from "./store";
 
-/** The session's schedule and meeting, fetched once per server instance. */
+/** The session's schedule and meeting, fetched once per server instance; a failure is remembered for a minute. */
 const infoCache = new Map<number, Promise<{ session: Session; meeting: Meeting; meetingSessions: Session[] }>>();
 function sessionInfo(sessionKey: number) {
   let p = infoCache.get(sessionKey);
@@ -20,20 +20,42 @@ function sessionInfo(sessionKey: number) {
       const [[meeting], meetingSessions] = await Promise.all([openf1<Meeting>("meetings", { meeting_key: session.meeting_key }), openf1<Session>("sessions", { meeting_key: session.meeting_key })]);
       return { session, meeting: meeting ?? ({ meeting_key: session.meeting_key, meeting_name: session.circuit_short_name, circuit_key: session.circuit_key, year: session.year } as unknown as Meeting), meetingSessions };
     })();
-    p.catch(() => infoCache.delete(sessionKey));
+    p.catch(() => setTimeout(() => infoCache.delete(sessionKey), 60_000));
     infoCache.set(sessionKey, p);
   }
   return p;
 }
 
-/** The newest stored session at this circuit that has an outline: the live map is drawn on it. */
-async function referenceSession(circuitKey: number, except: number): Promise<SessionMeta | null> {
-  for (const key of await sessionIndex().atCircuit(circuitKey).catch(() => [] as number[])) {
-    if (key === except) continue;
-    const meta = await readJson<SessionMeta>(metaKey(key));
-    if (meta?.outline) return meta;
-  }
-  return null;
+type Reference = { outline: NonNullable<SessionMeta["outline"]>; year: number; sessionName: string };
+
+/** Things read from stored sessions, kept for 10 minutes per server instance: each is a multi-MB file. */
+const stored = new Map<string, { at: number; value: Promise<unknown> }>();
+function remembered<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = stored.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.value as Promise<T>;
+  const value = load();
+  stored.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** The outline of the newest stored session at this circuit: the live map is drawn on it. */
+function referenceOutline(circuitKey: number, except: number): Promise<Reference | null> {
+  return remembered(`outline:${circuitKey}`, async () => {
+    for (const key of await sessionIndex().atCircuit(circuitKey).catch(() => [] as number[])) {
+      if (key === except) continue;
+      const meta = await readJson<SessionMeta>(metaKey(key));
+      if (meta?.outline) return { outline: meta.outline, year: meta.session.year, sessionName: meta.session.session_name };
+    }
+    return null;
+  });
+}
+
+/** The stored qualifying session that set this race's grid, as timing only. */
+function qualifyingTiming(sessionKey: number): Promise<SessionMeta["qualifying"]> {
+  return remembered(`qualifying:${sessionKey}`, async () => {
+    const q = await readJson<SessionMeta>(metaKey(sessionKey));
+    return q ? { sessionKey: q.session.session_key, sessionName: q.session.session_name, laps: q.laps, raceControl: q.raceControl, results: q.results } : null;
+  });
 }
 
 /** Reads every row the relays have stored for a session, oldest change first. */
@@ -56,9 +78,8 @@ async function allRows(store: LiveStore, sessionKey: number) {
  */
 export async function liveMeta(store: LiveStore, sessionKey: number): Promise<{ meta: SessionMeta; rev: number }> {
   const [{ session, meeting, meetingSessions }, { rows, rev }] = await Promise.all([sessionInfo(sessionKey), allRows(store, sessionKey)]);
-  const reference = await referenceSession(session.circuit_key, sessionKey);
+  const reference = await referenceOutline(session.circuit_key, sessionKey);
   const q = qualifyingFor(session, meetingSessions);
-  const qualifyingMeta = q ? await readJson<SessionMeta>(metaKey(q.session_key)) : null;
   const base = assembleMeta({
     session,
     meeting,
@@ -72,13 +93,11 @@ export async function liveMeta(store: LiveStore, sessionKey: number): Promise<{ 
     results: [],
     outline: reference?.outline ?? null,
     outlineNote: reference
-      ? `Drawn from the ${reference.session.year} ${reference.session.session_name.toLowerCase()} here (the live feed has no outline).`
+      ? `Drawn from the ${reference.year} ${reference.sessionName.toLowerCase()} here (the live feed has no outline).`
       : "No stored session at this circuit to draw it from yet.",
     multiviewer: await multiviewerCircuit(meeting).catch(() => null),
     learned: await learnedSectors(session.circuit_key).catch(() => null),
-    qualifying: qualifyingMeta
-      ? { sessionKey: qualifyingMeta.session.session_key, sessionName: qualifyingMeta.session.session_name, laps: qualifyingMeta.laps, raceControl: qualifyingMeta.raceControl, results: qualifyingMeta.results }
-      : null,
+    qualifying: q ? await qualifyingTiming(q.session_key) : null,
     source: "live",
   });
   base.windows = [];

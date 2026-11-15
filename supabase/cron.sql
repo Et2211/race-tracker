@@ -13,7 +13,7 @@ select cron.schedule('race-tracker-calendar', '30 4 * * *', $$
   select net.http_get(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'race_tracker_app_url') || '/api/cron/calendar',
     headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'race_tracker_cron_secret')),
-    timeout_milliseconds := 60000
+    timeout_milliseconds := 295000
   );
 $$);
 
@@ -46,3 +46,13 @@ select cron.schedule('race-tracker-live-relay', '* * * * *', $$
   )
   where exists (select 1 from public.live_session_now());
 $$);
+
+-- pg_cron records every run in cron.job_run_details; with a job every minute that grows without
+-- end. Keep a week.
+select cron.schedule('race-tracker-prune-cron-history', '15 5 * * *', $$
+  delete from cron.job_run_details where end_time < now() - interval '7 days';
+$$);
+
+-- Already scheduled the calendar job with the 60 s timeout? Update it in place:
+--   select cron.alter_job((select jobid from cron.job where jobname = 'race-tracker-calendar'),
+--     command := $cmd$ ...the calendar job above... $cmd$);
