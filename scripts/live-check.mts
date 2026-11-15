@@ -8,11 +8,10 @@
  * Outside a live session the feed is quiet; that is expected.
  */
 import nextEnv from "@next/env";
-import mqtt from "mqtt";
 
 nextEnv.loadEnvConfig(process.cwd());
 const { accessToken, openf1Credentials, BASE } = await import("@/lib/openf1/auth");
-const { MQTT_URL } = await import("@/lib/live/relay");
+const { connectFeed, MQTT_URLS } = await import("@/lib/live/relay");
 
 const i = process.argv.indexOf("--seconds");
 const seconds = i >= 0 ? Number(process.argv[i + 1]) : 60;
@@ -26,8 +25,9 @@ console.log("Signed in: got a token.");
 const rest = await fetch(`${BASE}/sessions?session_key=latest`, { headers: { Authorization: `Bearer ${token}` } });
 console.log(`REST with the token: HTTP ${rest.status}`);
 
-console.log(`Connecting to ${MQTT_URL} for ${seconds} s …`);
-const client = await mqtt.connectAsync(MQTT_URL, { username: credentials.username, password: token!, connectTimeout: 15_000, reconnectPeriod: 0 });
+console.log(`Connecting (trying ${MQTT_URLS.join(", then ")}) …`);
+const { client, url } = await connectFeed({ username: credentials.username, password: token!, reconnectPeriod: 0 }, 15_000, (line) => console.log(`  ${line}`));
+console.log(`Connected over ${url}; listening for ${seconds} s …`);
 await client.subscribeAsync("#");
 const counts = new Map<string, number>();
 const examples = new Map<string, string>();
