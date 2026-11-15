@@ -15,7 +15,7 @@ const NO_SKIPS: [number, number][] = [];
 export function useClock(span: { start: number; end: number }, initial: number | null, skips: [number, number][] = NO_SKIPS) {
   const [t, setT] = useState<number>(() => Math.min(span.end, Math.max(span.start, initial ?? span.start)));
   const [playing, setPlayingState] = useState(false);
-  const [speed, setSpeed] = useState<Speed>(4);
+  const [speed, setSpeed] = useState<Speed>(1);
   // The current time for the animation loop and handlers, which must not wait for a render.
   const now = useRef(t);
 
