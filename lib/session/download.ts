@@ -1,4 +1,5 @@
 import "server-only";
+import { liveStore } from "@/lib/live/store";
 import { ingestMeta, ingestWindow } from "./ingest";
 
 export type DownloadResult = { sessionKey: number; windows: number; stored: number; complete: boolean; seconds: number };
@@ -17,5 +18,8 @@ export async function downloadSession(sessionKey: number, budgetMs: number): Pro
     await ingestWindow(meta, w.index);
     stored++;
   }
-  return { sessionKey, windows: meta.windows.length, stored, complete: stored === meta.windows.length, seconds: Math.round((Date.now() - started) / 1000) };
+  const complete = stored === meta.windows.length;
+  // The final data is stored: the copy kept from the live feed is no longer needed.
+  if (complete) await liveStore().clear(sessionKey).catch((e: unknown) => console.warn(`[live ${sessionKey}] could not clear live data`, e));
+  return { sessionKey, windows: meta.windows.length, stored, complete, seconds: Math.round((Date.now() - started) / 1000) };
 }

@@ -287,3 +287,12 @@ a:focus-visible {
 @media (max-width: 760px) { .log-scroll { max-height: 20rem; } }
 .log .when { display: flex; flex-direction: column; align-items: flex-end; min-width: 64px; gap: 2px; }
 .log .when-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- Live ---------------------------------------------------------------- */
+.seg[aria-current="page"] { background: var(--text); color: var(--bg); }
+a.seg { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
+.live-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.live-status.warn .live-dot { background: var(--yellow); animation: none; }
+.live-status.off .live-dot { background: var(--muted); animation: none; }
+.live-pill { display: inline-flex; align-items: center; gap: 6px; border-color: var(--red); }
+.live-chip { border-color: var(--red); }

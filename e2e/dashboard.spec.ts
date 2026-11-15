@@ -221,3 +221,11 @@ test("race control keeps every message so far and scrolls", async ({ page }) => 
   });
   expect(inside).toBe(true);
 });
+
+test("the live page says live data is not set up when the server has no OpenF1 account", async ({ page }) => {
+  await page.goto("/live/11369");
+  await expect(page.getByRole("heading", { name: "Could not connect to the live session" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Live data is not set up" })).toBeVisible();
+  await page.goto("/session/11369");
+  await expect(page.getByRole("navigation", { name: "Data mode" }).getByRole("link", { name: "Live" })).toHaveAttribute("href", "/live/11369");
+});

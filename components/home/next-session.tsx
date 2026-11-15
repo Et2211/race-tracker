@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { HomeData } from "@/lib/home/data";
 import { SHAPE_VIEWBOX } from "@/lib/session/summary";
 import { useNow } from "./use-now";
@@ -13,6 +14,8 @@ export function NextSession({ next }: { next: NonNullable<HomeData["next"]> }) {
   const start = Date.parse(session.dateStart);
   const end = Date.parse(session.dateEnd);
   const live = now !== null && now >= start && now < end;
+  // The live view has data from 20 minutes before the start (the relays start then).
+  const watchable = now !== null && now >= start - 20 * 60_000 && now < end + 30 * 60_000;
   const left = now === null ? null : Math.max(0, start - now);
   const parts = left === null ? null : { d: Math.floor(left / 86_400_000), h: Math.floor(left / 3_600_000) % 24, m: Math.floor(left / 60_000) % 60, s: Math.floor(left / 1000) % 60 };
   const when =
@@ -27,8 +30,13 @@ export function NextSession({ next }: { next: NonNullable<HomeData["next"]> }) {
         <h2 id="next-title" className="hero-title">{meeting.name}</h2>
         <p className="hero-sub">{session.name} · {meeting.circuit}</p>
         <p className="muted" style={{ margin: 0 }}>{when}</p>
+        {watchable && (
+          <Link href={`/live/${session.sessionKey}`} className="cta">
+            <span className="live-dot" aria-hidden="true" /> Watch live
+          </Link>
+        )}
         {live ? (
-          <p className="note" style={{ marginTop: 8 }}>Live timing needs OpenF1&apos;s paid tier. The replay is downloaded automatically about three hours after the session ends.</p>
+          <p className="note" style={{ marginTop: 8 }}>The full replay is downloaded automatically about three hours after the session ends.</p>
         ) : (
           <div className="countdown" role="timer" aria-label={parts ? `${parts.d} days ${parts.h} hours ${parts.m} minutes to go` : "Countdown"}>
             {(["d", "h", "m", "s"] as const).map((k) => (

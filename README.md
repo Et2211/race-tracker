@@ -34,7 +34,10 @@ To work offline, set `F1_DATA_MODE=fixtures`: only the four recorded sessions in
 | `npm run ingest -- <session keys>` or `-- --year 2026 --type Race` | Download sessions into the store through a running server (`BASE_URL`, default `http://localhost:3000`) |
 | `npm run backtest [-- --sweep] [-- --learn]` | Score the stopped-car inference against every downloaded session (local store); writes `docs/m6-backtest.md`. `--learn` records marshal-sector positions (to Supabase when configured, else `data/marshal-sectors`) |
 | `npm run store:upload [-- <session keys>]` | Copy sessions from the local store to Supabase so they need not be fetched from OpenF1 again |
-| `npm run backfill [-- --standings]` | Write homepage summaries and circuit outlines for sessions stored before they existed (no OpenF1 calls). `--standings` also fetches the championship table after every race and sprint since 2023 (3 OpenF1 requests each; don't run it alongside a download) |
+| `npm run backfill [-- --standings] [-- --stints]` | Write homepage summaries and circuit outlines for sessions stored before they existed (no OpenF1 calls). `--standings` also fetches the championship table after every race and sprint since 2023 (3 OpenF1 requests each; don't run it alongside a download). `--stints` adds tyre stints to races stored before they were kept |
+| `npm run fake-openf1 [-- --session 11369 --lap 10]` | A local stand-in for OpenF1's paid tier: replays a stored session in real time, shifted to now, with the token endpoint, REST and the MQTT-over-WebSocket feed. For building and testing live mode without an account (see Live mode) |
+| `npm run live:check [-- --seconds 60]` | With an OpenF1 account in `.env.local`: signs in, listens to the real-time feed and prints which topics arrive with an example of each (never the token). Run it on the day you subscribe |
+| `npm run test:live` | Live mode end to end without an account or network (~70 s): the fake replays the recorded Madrid race, three overlapping relays store it in memory, and the result is checked against the source (no second missing, exact samples, laps in their final version) |
 
 ## Environment variables
 
@@ -59,6 +62,20 @@ All are server-only; see [`.env.example`](.env.example).
 - **Track outline**: the racing line of one fast lap, from OpenF1 car positions, so cars sit on it by construction. Sector boundaries come from that lap's sector times.
 - **Marshal sectors**: OpenF1 only gives a flagged sector's number. Where MultiViewer has a circuit file, the server fetches it once and caches it, and the flagged stretch runs from that sector's marker to the next. Elsewhere a stretch is drawn only where stops in at least two other sessions have located it (the `marshal_observations` table, or `data/marshal-sectors/` without Supabase, written by `npm run backtest -- --learn`); otherwise the sector is named but not drawn.
 - **Stopped cars**: cars below 30 km/h on the racing line from 30 s before a yellow until 5 s after, having been at racing speed shortly before, excluding the pit lane and the start. A nearby car whose speed fell sharply at that moment is listed as possible contact. Confidence is "high" only once race control names the car in an incident at that time. See `docs/m6-backtest.md` for how well this works.
+
+## Live mode
+
+Needs OpenF1's paid tier. Nothing here costs anything until `OPENF1_USERNAME` / `OPENF1_PASSWORD` are set.
+
+- **Relays.** Supabase Cron calls `/api/live/relay` every minute while a session is on (`live_session_now()`: 20 minutes before the start to 30 after the end). Each call answers at once and, after the response, holds an MQTT-over-WebSocket connection to OpenF1 for 150 s, so two or three relays always overlap and the hand-over never drops data (OpenF1 allows 10 connections). Vercel's 300 s limit is never reached.
+- **One copy of everything.** Low-rate topics (laps, race control, positions, intervals, pits, stints, results) are stored one row per record (`live_rows`, keyed by what the row describes; a newer `_id` replaces an older version, e.g. a lap gaining its sector times). Car positions and telemetry are stored one gzipped row per second of session time (`live_buckets`, first write wins), keyed by the samples' own timestamps so every relay builds identical seconds; a relay skips the second it joined in. A relay that finds nobody was connected before it fills the gap (up to 10 minutes) from REST.
+- **Browser.** `/live/<session key>` loads the session so far, then polls `/api/live/<key>/updates` and the newest minute of car data every second. The clock shows real time minus a delay and never runs past the newest data; **Sync to video** sets the delay from a moment you press on your stream (NOW, F1 TV), pausing freezes it, and the scrubber goes back over anything received. The OpenF1 token never leaves the server.
+- **During a session there is no classification yet**, so retirements and the official result appear once OpenF1 publishes them; the map is drawn on the newest stored session at the circuit.
+- **Afterwards** the session is downloaded the normal way about three hours after the end; `live_clear()` removes its live rows.
+
+**On the day you subscribe:** add the credentials to `.env.local` and Vercel, run `npm run live:check` during a session, and run the `race-tracker-live-relay` job from `supabase/cron.sql` if it is not scheduled yet.
+
+**Testing without an account:** `npm run fake-openf1 -- --lap 10`, then start the app with `OPENF1_API_BASE=http://localhost:4100/v1 OPENF1_MQTT_URL=ws://localhost:4100/mqtt OPENF1_USERNAME=fake OPENF1_PASSWORD=fake CRON_SECRET=<any>`, call `/api/live/relay?session=11369` with the secret every minute, and open `/live/11369`.
 
 ## Data sources
 
