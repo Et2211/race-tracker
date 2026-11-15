@@ -1,9 +1,9 @@
-import type { Driver, IntervalRow, Lap, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import type { Driver, IntervalRow, Lap, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult, Stint } from "@/lib/openf1/types";
 import type { Outline } from "@/lib/track/geometry";
 import type { MarshalSectors } from "@/lib/track/markers";
 
 /** Bump when SessionMeta or TelemetryChunk changes shape; it is part of the URLs the browser caches. */
-export const DATA_FORMAT = 1;
+export const DATA_FORMAT = 3;
 
 export type SessionKind = "race" | "qualifying" | "other";
 
@@ -35,6 +35,8 @@ export type SessionMeta = {
   positions: PositionRow[];
   intervals: IntervalRow[];
   pits: PitRow[];
+  /** Tyre stints, races and sprints only. Absent on sessions stored before tyres were kept. */
+  stints?: Stint[];
   results: SessionResult[];
   outline: Outline | null;
   /** Why there is no outline, or where it came from. */

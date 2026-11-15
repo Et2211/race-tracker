@@ -74,12 +74,14 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
   const cars: CarDot[] = useMemo(() => {
     if (!view.transform) return [];
     const out: CarDot[] = [];
+    const retired = new Set(snapshot.retired);
     for (const [driver, trace] of telemetry.traces) {
+      if (retired.has(driver)) continue;
       const p = traceAt(trace, t);
       if (p) out.push({ driver, ...toMap(view.transform, p) });
     }
     return out;
-  }, [telemetry, view.transform, t, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [telemetry, view.transform, t, version, snapshot.retired]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tell the loader where the playhead is (to the minute) so it downloads that window first.
   const playheadMinute = Math.floor(slowT / 60_000);
@@ -248,7 +250,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
         </section>
         <aside className="col-side">
           <FlagPanels view={view} snapshot={snapshot} />
-          {snapshot.watch && <WatchPanel view={view} watch={snapshot.watch} selected={selected} onSelect={select} />}
+          {snapshot.watch && <WatchPanel view={view} year={meta.session.year} watch={snapshot.watch} selected={selected} onSelect={select} />}
         </aside>
       </div>
 

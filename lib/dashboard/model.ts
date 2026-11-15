@@ -52,7 +52,8 @@ export type FlagView = {
 };
 
 /** `pre` marks messages before lights out; OpenF1 stamps those with lap 1. */
-export type LogEntry = { lap: number | null; pre: boolean; time: string; text: string; tone: LogTone };
+/** `id` stays the same for a message as newer ones arrive above it. */
+export type LogEntry = { id: string; lap: number | null; pre: boolean; time: string; iso: string; text: string; tone: LogTone };
 
 export type QualifyingView = {
   sessionName: string;
@@ -75,6 +76,8 @@ export type Snapshot = {
   safetyCar: { kind: "SC" | "VSC"; ending: boolean } | null;
   red: boolean;
   cars: CarDot[];
+  /** Cars that have retired from the race and stopped for good; they are not drawn. */
+  retired: number[];
   /** Telemetry for this moment has been downloaded. */
   telemetryLoaded: boolean;
   /** Downloaded, and OpenF1 actually has car positions for this moment. */

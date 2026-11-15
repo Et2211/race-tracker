@@ -85,6 +85,16 @@ export type IntervalRow = {
 
 export type PositionRow = { date: string; driver_number: number; position: number };
 
+/** A run on one set of tyres. `tyre_age_at_start` counts laps the set had done before (e.g. in qualifying). */
+export type Stint = {
+  driver_number: number;
+  stint_number: number;
+  lap_start: number | null;
+  lap_end: number | null;
+  compound: string | null;
+  tyre_age_at_start: number | null;
+};
+
 export type PitRow = { date: string; driver_number: number; lap_number: number; lane_duration: number | null };
 
 export type SessionResult = {
