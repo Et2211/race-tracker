@@ -27,13 +27,16 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
         meetingKey: m.meeting_key,
         name: m.meeting_name,
         circuit: m.circuit_short_name,
+        circuitKey: m.circuit_key,
         dateStart: m.date_start,
+        dateEnd: m.date_end ?? m.date_start,
+        cancelled: Boolean(m.is_cancelled),
         sessions: sessions
-          .filter((s) => s.meeting_key === m.meeting_key && PICKER_SESSIONS.includes(s.session_name) && !s.is_cancelled)
+          .filter((s) => s.meeting_key === m.meeting_key && PICKER_SESSIONS.includes(s.session_name) && !s.is_cancelled && !m.is_cancelled)
           .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
           .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: false, upcoming: false, downloaded: false })),
       }))
-      .filter((m) => m.sessions.length > 0)
+      .filter((m) => m.sessions.length > 0 || m.cancelled)
       .sort((a, b) => a.dateStart.localeCompare(b.dateStart)),
   };
 }
@@ -62,8 +65,8 @@ function withStatus(catalog: Catalog, isDownloaded: (sessionKey: number) => bool
 }
 
 async function cachedCatalog(year: number): Promise<Catalog> {
-  // v2: also lists sessions that have not started yet.
-  const key = `catalog/v2/${year}.json`;
+  // v3: lists sessions that have not started yet, and cancelled rounds.
+  const key = `catalog/v3/${year}.json`;
   const cached = await readJson<Catalog>(key);
   const finishedYear = year < new Date().getUTCFullYear();
   if (cached && (finishedYear || Date.now() - Date.parse(cached.fetchedAt) < CURRENT_YEAR_TTL_MS)) return cached;

@@ -26,6 +26,7 @@ export type Meeting = {
   circuit_info_url: string | null;
   gmt_offset: string;
   date_start: string;
+  date_end?: string;
   is_cancelled?: boolean;
   year: number;
 };

@@ -12,7 +12,17 @@ export type CatalogSession = {
   /** Already downloaded into the store, so it opens without contacting OpenF1. */
   downloaded: boolean;
 };
-export type CatalogMeeting = { meetingKey: number; name: string; circuit: string; dateStart: string; sessions: CatalogSession[] };
+export type CatalogMeeting = {
+  meetingKey: number;
+  name: string;
+  circuit: string;
+  circuitKey: number;
+  dateStart: string;
+  dateEnd: string;
+  /** Cancelled rounds stay on the calendar, marked, with no sessions to open. */
+  cancelled: boolean;
+  sessions: CatalogSession[];
+};
 export type Catalog = { year: number; meetings: CatalogMeeting[]; fetchedAt: string; source: "openf1" | "fixtures" };
 
 export const FIRST_YEAR = 2023;

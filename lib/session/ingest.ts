@@ -9,10 +9,27 @@ import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type LearnedSectors } from "./assemble";
 import { SETTLE_MS } from "./catalog";
+import { circuitShape, summarize, type CircuitShape } from "./summary";
 import { encodeChunk } from "./telemetry";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 export const metaKey = (sessionKey: number) => `sessions/${sessionKey}/meta.json`;
+export const summaryKey = (sessionKey: number) => `sessions/${sessionKey}/summary.json`;
+export const circuitKeyPath = (circuitKey: number) => `circuits/${circuitKey}.json`;
+
+/**
+ * Small files derived from a session's metadata for the homepage: its summary, and the circuit's
+ * outline (the newest season's drawing wins). Returns the bytes written.
+ */
+export async function writeDerived(meta: SessionMeta): Promise<number> {
+  let bytes = await writeJson(summaryKey(meta.session.session_key), summarize(meta));
+  const shape = circuitShape(meta);
+  if (shape) {
+    const existing = await readJson<CircuitShape>(circuitKeyPath(shape.circuitKey));
+    if (!existing || existing.year <= shape.year) bytes += await writeJson(circuitKeyPath(shape.circuitKey), shape);
+  }
+  return bytes;
+}
 export const chunkKey = (sessionKey: number, index: number) => `sessions/${sessionKey}/chunk-${index}.json`;
 
 
@@ -169,7 +186,7 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   });
   const bytes = await writeJson(metaKey(sessionKey), meta);
   await sessionIndex().setWindows(sessionKey, meta.windows.length);
-  await sessionIndex().added(sessionKey, bytes, false);
+  await sessionIndex().added(sessionKey, bytes + (await writeDerived(meta)), false);
   return meta;
 }
 

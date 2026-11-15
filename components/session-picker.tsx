@@ -73,7 +73,7 @@ export function SessionPicker({ label, current }: { label: string; current?: { y
           <label className="sr-only" htmlFor={`${id}-meeting`}>Grand Prix</label>
           <select id={`${id}-meeting`} className="picker" value={meetingKey ?? ""} disabled={!catalog} onChange={(e) => { setMeetingKey(Number(e.target.value)); setSessionKey(null); }}>
             <option value="" disabled>{catalog ? "Grand Prix" : error ? "Could not load" : "Loading…"}</option>
-            {catalog?.meetings.map((m) => <option key={m.meetingKey} value={m.meetingKey}>{m.name} · {m.circuit}</option>)}
+            {catalog?.meetings.map((m) => <option key={m.meetingKey} value={m.meetingKey} disabled={m.cancelled}>{m.name} · {m.circuit}{m.cancelled ? " (cancelled)" : ""}</option>)}
           </select>
           <label className="sr-only" htmlFor={`${id}-session`}>Session</label>
           <select id={`${id}-session`} className="picker" value={sessionKey ?? ""} disabled={!meeting} onChange={(e) => setSessionKey(Number(e.target.value))}>
