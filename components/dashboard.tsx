@@ -6,6 +6,7 @@ import { buildSnapshot, buildStatic } from "@/lib/dashboard/snapshot";
 import type { CarDot } from "@/lib/dashboard/model";
 import { SPEEDS, useClock, useThrottled, type Speed } from "@/lib/replay/use-clock";
 import { useSession } from "@/lib/replay/use-session";
+import { REACTION_MS, syncPoints, type SyncPoint } from "@/lib/replay/sync";
 import { jumpTargets } from "@/lib/replay/timeline";
 import { traceAt } from "@/lib/session/telemetry";
 import { formatClock, formatLapTime, formatSector } from "@/lib/timing/format";
@@ -13,6 +14,8 @@ import type { Phase } from "@/lib/timing/qualifying";
 import { toMap } from "@/lib/track/map";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
+import { SyncControl } from "./sync-control";
+import { WatchPanel } from "./watch-panel";
 import { SessionPicker } from "./session-picker";
 import { MarkLegend, QualifyingTable, RaceTable } from "./timing-tables";
 import { MapLegend, TrackMap } from "./track-map";
@@ -56,6 +59,13 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
   const targets = useMemo(() => jumpTargets(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
   const firstWindow = meta.source === "fixtures" ? meta.windows[0]?.from : null;
   const clock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start));
+  const sync = useMemo(() => syncPoints(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
+  // The point the replay was synced to; any move other than a nudge or play/pause ends the sync.
+  const [synced, setSynced] = useState<SyncPoint | null>(null);
+  const seek = (to: number) => {
+    setSynced(null);
+    clock.seek(to);
+  };
   const t = clock.t;
   // Tables, flags and inference are recomputed a few times a second; car dots every frame.
   const slowT = useThrottled(t, 200);
@@ -64,12 +74,14 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
   const cars: CarDot[] = useMemo(() => {
     if (!view.transform) return [];
     const out: CarDot[] = [];
+    const retired = new Set(snapshot.retired);
     for (const [driver, trace] of telemetry.traces) {
+      if (retired.has(driver)) continue;
       const p = traceAt(trace, t);
       if (p) out.push({ driver, ...toMap(view.transform, p) });
     }
     return out;
-  }, [telemetry, view.transform, t, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [telemetry, view.transform, t, version, snapshot.retired]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tell the loader where the playhead is (to the minute) so it downloads that window first.
   const playheadMinute = Math.floor(slowT / 60_000);
@@ -145,7 +157,10 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
           <button className="tab" onClick={() => clock.setPlaying(!clock.playing)} aria-label={clock.playing ? "Pause" : "Play"}>{clock.playing ? "Pause" : "Play"}</button>
           <div role="group" aria-label="Playback speed" className="segmented">
             {SPEEDS.map((s) => (
-              <button key={s} className="seg" style={{ padding: "0 12px" }} aria-pressed={clock.speed === s} onClick={() => clock.setSpeed(s as Speed)}>{s}×</button>
+              <button key={s} className="seg" style={{ padding: "0 12px" }} aria-pressed={clock.speed === s} onClick={() => {
+                if (s !== clock.speed) setSynced(null);
+                clock.setSpeed(s as Speed);
+              }}>{s}×</button>
             ))}
           </div>
         </div>
@@ -161,17 +176,29 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
             max={Math.round((span.end - span.start) / 1000)}
             step={1}
             value={Math.round((t - span.start) / 1000)}
-            onChange={(e) => clock.seek(span.start + Number(e.target.value) * 1000)}
+            onChange={(e) => seek(span.start + Number(e.target.value) * 1000)}
             aria-valuetext={`${formatClock(t)} UTC${meta.kind === "race" ? `, lap ${snapshot.lap}` : ""}`}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <label htmlFor="jump" className="muted" style={{ fontSize: 14 }}>Jump to</label>
-          <select id="jump" className="picker" value="" onChange={(e) => e.target.value && clock.seek(Number(e.target.value))}>
+          <select id="jump" className="picker" value="" onChange={(e) => e.target.value && seek(Number(e.target.value))}>
             <option value="">{meta.kind === "qualifying" ? "Phase…" : "Lap…"}</option>
             {targets.map((x) => <option key={x.label} value={x.t}>{x.label}</option>)}
           </select>
         </div>
+        <SyncControl
+          points={sync}
+          synced={synced}
+          playing={clock.playing}
+          onSync={(p) => {
+            clock.seek(p.t + REACTION_MS);
+            clock.setSpeed(1);
+            clock.setPlaying(true);
+            setSynced(p);
+          }}
+          onNudge={(ms) => clock.seek(clock.t + ms)}
+        />
         <div className="muted" style={{ fontSize: 13, flexBasis: "100%" }} aria-live="polite">
           Car data {progress.ready} of {progress.total} parts loaded
           {meta.source === "fixtures" ? " (only short recorded windows exist in offline mode)" : ""}
@@ -180,7 +207,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
           )}
           {meta.source === "fixtures" && meta.windows.length > 0 && (
             <> · Recorded windows: {meta.windows.map((w) => (
-              <button key={w.index} className="seg" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => clock.seek(w.from + 15_000)}>{formatClock(w.from)}</button>
+              <button key={w.index} className="seg" style={{ minHeight: 32, padding: "0 8px" }} onClick={() => seek(w.from + 15_000)}>{formatClock(w.from)}</button>
             ))}</>
           )}
         </div>
@@ -223,6 +250,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
         </section>
         <aside className="col-side">
           <FlagPanels view={view} snapshot={snapshot} />
+          {snapshot.watch && <WatchPanel view={view} year={meta.session.year} watch={snapshot.watch} selected={selected} onSelect={select} />}
         </aside>
       </div>
 

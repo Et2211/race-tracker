@@ -90,12 +90,18 @@ export function FlagPanels({ view, snapshot }: { view: StaticView; snapshot: Sna
         </section>
       )}
       <section className="panel" style={{ flex: 1 }}>
-        <h2 className="small">Race control</h2>
+        <div className="split">
+          <h2 className="small" id="rc-title">Race control</h2>
+          {snapshot.log.length > 0 && <span className="muted" style={{ fontSize: 13 }}>{snapshot.log.length} message{snapshot.log.length === 1 ? "" : "s"} · newest first · UTC</span>}
+        </div>
         {snapshot.log.length === 0 && <p className="note">No messages yet.</p>}
-        <ul className="log">
-          {snapshot.log.map((entry, i) => (
-            <li key={i}>
-              <span className="when">{entry.pre ? "Pre" : entry.lap ? `L${entry.lap}` : entry.time}</span>
+        <ul className="log log-scroll" tabIndex={0} aria-labelledby="rc-title">
+          {snapshot.log.map((entry) => (
+            <li key={entry.id}>
+              <span className="when">
+                {entry.pre ? "Pre" : entry.lap ? `L${entry.lap}` : null}
+                <time className="when-time" dateTime={entry.iso}>{entry.time}</time>
+              </span>
               <span className={`tone-${entry.tone}`}>{entry.text}</span>
             </li>
           ))}

@@ -1,3 +1,4 @@
+import type { Battle } from "@/lib/timing/battles";
 import type { Confidence } from "@/lib/incident/stopped";
 import type { LogTone } from "@/lib/flags/state";
 import type { IdealLap, Phase, QualifyingPhase } from "@/lib/timing/qualifying";
@@ -51,7 +52,8 @@ export type FlagView = {
 };
 
 /** `pre` marks messages before lights out; OpenF1 stamps those with lap 1. */
-export type LogEntry = { lap: number | null; pre: boolean; time: string; text: string; tone: LogTone };
+/** `id` stays the same for a message as newer ones arrive above it. */
+export type LogEntry = { id: string; lap: number | null; pre: boolean; time: string; iso: string; text: string; tone: LogTone };
 
 export type QualifyingView = {
   sessionName: string;
@@ -74,6 +76,8 @@ export type Snapshot = {
   safetyCar: { kind: "SC" | "VSC"; ending: boolean } | null;
   red: boolean;
   cars: CarDot[];
+  /** Cars that have retired from the race and stopped for good; they are not drawn. */
+  retired: number[];
   /** Telemetry for this moment has been downloaded. */
   telemetryLoaded: boolean;
   /** Downloaded, and OpenF1 actually has car positions for this moment. */
@@ -84,6 +88,8 @@ export type Snapshot = {
   classification: { driver: number; onTrack: number | null; official: number | null; status: string | null }[] | null;
   leader: number | null;
   trend: { fromLap: number; toLap: number; series: TrendSeries[] } | null;
+  /** Races only, after the start: pairs worth watching, or why there are none to suggest. */
+  watch: { battles: Battle[]; note: string | null } | null;
   qualifying: QualifyingView | null;
   log: LogEntry[];
 };

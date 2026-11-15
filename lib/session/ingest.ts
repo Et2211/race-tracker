@@ -2,7 +2,9 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { openf1, TooMuchDataError } from "@/lib/openf1/client";
-import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult, Stint } from "@/lib/openf1/types";
+import { withDownloadLock } from "@/lib/storage/download-lock";
+import { downloadLocks } from "@/lib/storage/locks";
 import { sessionIndex } from "@/lib/storage/session-index";
 import { readJson, writeJson } from "@/lib/storage/store";
 import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
@@ -99,7 +101,7 @@ async function lapTrace(sessionKey: number, lap: Lap) {
 /**
  * Downloads already running on this server instance, so a second request for the same item (a
  * second tab, or React running effects twice in development) waits for the first instead of
- * fetching everything from OpenF1 again.
+ * fetching everything from OpenF1 again. Across instances, `withDownloadLock` does the same.
  */
 const running = new Map<string, Promise<unknown>>();
 function once<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -112,12 +114,18 @@ function once<T>(key: string, work: () => Promise<T>): Promise<T> {
 
 /** Step 1 of ingesting: everything except car telemetry, about 15 OpenF1 requests. */
 export function ingestMeta(sessionKey: number): Promise<SessionMeta> {
-  return once(`meta:${sessionKey}`, () => downloadMeta(sessionKey));
+  const key = `meta:${sessionKey}`;
+  // A metadata download takes about a minute; a request waiting on another instance's gives up
+  // before the 300 s function limit.
+  return once(key, () =>
+    withDownloadLock(downloadLocks(), key, () => readJson<SessionMeta>(metaKey(sessionKey)), () => downloadMeta(sessionKey), { ttlSeconds: 240, waitMs: 240_000 }),
+  );
 }
 
 async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   const existing = await readJson<SessionMeta>(metaKey(sessionKey));
   if (existing) return existing;
+  console.info(`[download] session ${sessionKey}: metadata`);
 
   const [session] = await openf1<Session>("sessions", { session_key: sessionKey });
   if (!session) throw new Error(`OpenF1 has no session ${sessionKey}`);
@@ -142,6 +150,7 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   ]);
   const isRace = session.session_type === "Race";
   const intervals = isRace ? await openf1<IntervalRow>("intervals", { session_key: sessionKey }) : [];
+  const stints = isRace ? await openf1<Stint>("stints", { session_key: sessionKey }) : undefined;
 
   let qualifying: SessionMeta["qualifying"] = null;
   let qualifyingLaps: Lap[] = [];
@@ -176,6 +185,7 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     positions,
     intervals,
     pits,
+    stints,
     results,
     outline,
     outlineNote,
@@ -203,7 +213,13 @@ async function fetchRange<T>(endpoint: string, sessionKey: number, from: number,
 
 /** Step 2..n: one 15-minute window of location and car data (2 requests, more if split). */
 export function ingestWindow(meta: SessionMeta, index: number): Promise<TelemetryChunk> {
-  return once(`chunk:${meta.session.session_key}:${index}`, () => downloadWindow(meta, index));
+  const key = `chunk:${meta.session.session_key}:${index}`;
+  return once(key, () =>
+    withDownloadLock(downloadLocks(), key, () => readJson<TelemetryChunk>(chunkKey(meta.session.session_key, index)), () => downloadWindow(meta, index), {
+      ttlSeconds: 150,
+      waitMs: 240_000,
+    }),
+  );
 }
 
 async function downloadWindow(meta: SessionMeta, index: number): Promise<TelemetryChunk> {

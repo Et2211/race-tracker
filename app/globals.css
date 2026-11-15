@@ -246,3 +246,44 @@ a:focus-visible {
 .round-foot .round-cta { margin-top: 0; }
 @media (max-width: 600px) { .round-track.placeholder { display: none; } }
 .hero-num { font-family: var(--mono); font-size: 0.5em; font-weight: 600; color: var(--muted); vertical-align: middle; }
+.hero-figure { margin: 0; position: relative; }
+.round-figure { position: relative; }
+.layout-note { position: absolute; right: 0; bottom: 0; font-size: 12px; color: var(--muted); }
+
+/* --- Worth watching (race replay) ---------------------------------------- */
+.watch { gap: 10px; }
+.watch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.watch-row { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; flex-direction: column; gap: 4px; background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.watch-row:hover { border-color: var(--border-strong); }
+.watch-row:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.watch-row[aria-pressed="true"] { border-color: var(--red); }
+.watch-kind { margin-right: 4px; font-family: var(--cond); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; border-radius: 6px; padding: 3px 7px; border: 1px solid var(--border-strong); color: var(--muted); }
+.watch-kind.fight { color: var(--text); border-color: var(--red); }
+.watch-kind.catching { color: var(--text); border-color: var(--s1); }
+.watch-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 14px; }
+.watch-pair strong { font-family: var(--cond); font-size: 16px; }
+.watch-detail { font-size: 13px; color: var(--muted); }
+.watch-streams { display: flex; flex-wrap: wrap; gap: 8px; }
+.stream-link { border: 1px solid var(--border-strong); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; }
+.stream-link:hover { border-color: var(--text); }
+
+/* --- Sync to video ------------------------------------------------------- */
+.sync { display: contents; }
+.sync > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; }
+.sync > summary::-webkit-details-marker { display: none; }
+.sync[open] > summary { border-color: var(--red); }
+.sync-body { flex-basis: 100%; display: flex; flex-direction: column; gap: 10px; background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.sync-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sync-now { background: var(--red); color: #fff; border: 0; border-radius: 8px; font-weight: 700; min-height: 40px; padding: 0 22px; cursor: pointer; font-size: 15px; }
+.sync-now:hover { filter: brightness(1.12); }
+.sync-now:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.sync-nudge { display: inline-flex; align-items: center; gap: 8px; }
+.watch-kind.strategy { color: var(--muted); border-style: dashed; }
+.watch-strategy { color: var(--text); }
+
+/* Race control: every message so far, scrolling inside the panel. */
+.log-scroll { max-height: 26rem; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; scrollbar-gutter: stable; }
+.log-scroll:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+@media (max-width: 760px) { .log-scroll { max-height: 20rem; } }
+.log .when { display: flex; flex-direction: column; align-items: flex-end; min-width: 64px; gap: 2px; }
+.log .when-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }

@@ -13,11 +13,13 @@
     "backtest": "tsx scripts/backtest.mts",
     "ingest": "tsx scripts/ingest.mts",
     "test:e2e": "next build && playwright test",
-    "store:upload": "tsx scripts/store-upload.mts"
+    "store:upload": "tsx scripts/store-upload.mts",
+    "backfill": "tsx --tsconfig scripts/tsconfig.json scripts/backfill.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
     "@vercel/speed-insights": "^2.1.0",
+    "@vercel/analytics": "^2.0.1",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"

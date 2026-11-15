@@ -13,7 +13,7 @@ export type HomeMeeting = CatalogMeeting & {
   /** Round number among the rounds that were not cancelled. */
   round: number | null;
   shape: CircuitShape | null;
-  winner: { code: string; colour: string } | null;
+  winner: { code: string; name: string; number: number; colour: string } | null;
 };
 
 export type StandingDriver = { position: number; driver: number; code: string; name: string; fullName: string; team: string; colour: string; points: number };
@@ -75,7 +75,7 @@ export async function getHomeData(year: number): Promise<HomeData> {
       const summary = race ? await summaryFor(race.sessionKey) : null;
       const winnerNo = summary?.classification[0]?.driver;
       const winner = summary?.drivers.find((d) => d.number === winnerNo);
-      return { ...m, round: null, shape: await shapes.get(m.circuitKey)!, winner: winner ? { code: winner.code, colour: winner.colour } : null };
+      return { ...m, round: null, shape: await shapes.get(m.circuitKey)!, winner: winner ? { code: winner.code, name: winner.name, number: winner.number, colour: winner.colour } : null };
     }),
   );
   for (const m of meetings) if (!m.cancelled) m.round = ++round;

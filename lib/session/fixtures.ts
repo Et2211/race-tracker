@@ -1,6 +1,6 @@
 import "server-only";
 import { readFixture } from "@/lib/fixtures/load";
-import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult, Stint } from "@/lib/openf1/types";
 import { assembleMeta, outlineFrom, type LearnedSectors } from "./assemble";
 import { encodeChunk } from "./telemetry";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
@@ -79,6 +79,7 @@ export async function fixtureMeta(
     fixtureOutline(f),
   ]);
   const intervals = (await Promise.all(f.windows.map((w) => file<IntervalRow[]>(f.slug, `intervals.${w.name}`)))).flat();
+  const stints = session.session_type === "Race" ? await file<Stint[]>(f.slug, "stints").catch(() => undefined) : undefined;
   let qualifying: SessionMeta["qualifying"] = null;
   if (f.qualifying) {
     const q = bySlug(f.qualifying);
@@ -99,6 +100,7 @@ export async function fixtureMeta(
     positions,
     intervals,
     pits,
+    stints,
     results,
     outline,
     outlineNote: outline ? "Drawn from one recorded lap." : "No recorded lap to draw the circuit from.",

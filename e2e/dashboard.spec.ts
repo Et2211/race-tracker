@@ -3,15 +3,36 @@ import { expect, test, type Page } from "@playwright/test";
 
 const loaded = (page: Page) => expect(page.getByText(/Car data (\d+) of \1 parts loaded/)).toBeVisible({ timeout: 20_000 });
 
-test("home lists the reference sessions and opens one through the picker", async ({ page }) => {
+test("home shows the season calendar, opens a race from it and links back", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Choose a session" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "2026 Spanish Grand Prix · Race" })).toBeVisible();
-  await page.getByLabel("Grand Prix").selectOption({ label: "Spanish Grand Prix · Madring" });
-  await page.getByLabel("Session", { exact: true }).selectOption({ label: "Race · downloaded" });
-  await page.getByRole("button", { name: "Open" }).click();
+  await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
+  await page.getByRole("link", { name: "Watch the race: Spanish Grand Prix" }).click();
   await expect(page).toHaveURL(/\/session\/11369$/);
   await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();
+  await page.getByRole("link", { name: "← All sessions" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
+});
+
+test("home has no detectable accessibility violations and fits the screen", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+  const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  expect(sw).toBeLessThanOrEqual(cw);
+});
+
+test("worth watching names the close pair and selects the chasing car", async ({ page }) => {
+  // Lap 30 of the 2026 Madrid race: Lindblad (#41) 1.3 s behind Colapinto (#43) for P10.
+  await page.goto("/session/11369?t=2026-09-13T13:53:01Z");
+  await loaded(page);
+  const panel = page.getByRole("region", { name: "Worth watching" });
+  const row = panel.getByRole("button", { name: /#41 on .*#43 for P10/ });
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(row).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByRole("link", { name: /Open F1 TV/ })).toHaveAttribute("target", "_blank");
 });
 
 test("race replay shows the lap-5 yellow, the stopped car and the race-control log", async ({ page }) => {
@@ -141,4 +162,62 @@ test("rows do not animate when the system asks for reduced motion", async ({ pag
   }
   await expect(page.locator("label[for=scrub]")).not.toContainText("13:12:20");
   expect(seen).toBe(0);
+});
+
+test("sync to video jumps to lights out, plays at normal speed and ends when the replay is moved", async ({ page }) => {
+  await page.goto("/session/11369");
+  await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();
+  await page.getByText("Sync to video").click();
+  await expect(page.getByLabel("Moment")).toHaveValue("lights-out");
+  await page.getByRole("button", { name: "Now", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Synced at lights out." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Playback speed" }).getByRole("button", { name: "1×" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("label[for=scrub]")).toContainText("Replay lap 1");
+  await page.getByRole("button", { name: "+5 s" }).click();
+  await expect(page.getByText("Synced to video")).toBeVisible();
+  await page.getByRole("group", { name: "Playback speed" }).getByRole("button", { name: "4×" }).click();
+  await expect(page.getByText("Sync to video", { exact: true })).toBeVisible();
+});
+
+test("worth watching marks a car on fresher tyres catching one still to stop as strategy", async ({ page }) => {
+  // Lap 35 of the 2026 Madrid race: #63 is 1.1 s behind #30 on tyres 28 laps fresher; #30 has not stopped.
+  await page.goto("/session/11369?t=2026-09-13T14:01:37Z");
+  await loaded(page);
+  const row = page.getByRole("region", { name: "Worth watching" }).getByRole("button", { name: /#63 on .*#30 for P/ });
+  await expect(row).toContainText("Strategy");
+  await expect(row).toContainText("Not a straight fight");
+  await expect(row).toContainText("has not stopped yet");
+});
+
+test("retired cars leave the map once they have stopped", async ({ page }) => {
+  // #44 retired on lap 7 and sits in the garage; #18 crawls to a halt on track at about 13:26:50 during the lap-14 VSC.
+  await page.goto("/session/11369?t=2026-09-13T13:26:46Z");
+  await loaded(page);
+  await expect(page.locator('svg.map [data-driver="44"]')).toHaveCount(0);
+  await expect(page.locator('svg.map [data-driver="18"]')).toHaveCount(1);
+  await page.goto("/session/11369?t=2026-09-13T13:27:30Z");
+  await loaded(page);
+  await expect(page.locator('svg.map [data-driver="18"]')).toHaveCount(0);
+  await expect(page.locator('svg.map [data-driver="63"]')).toHaveCount(1);
+});
+
+test("race control keeps every message so far and scrolls", async ({ page }) => {
+  await page.goto("/session/11369?t=2026-09-13T14:30:00Z");
+  await loaded(page);
+  const log = page.getByRole("list", { name: "Race control" });
+  expect(await log.getByRole("listitem").count()).toBeGreaterThan(20);
+  const { scrolls } = await log.evaluate((el) => ({ scrolls: el.scrollHeight > el.clientHeight }));
+  expect(scrolls).toBe(true);
+  // The oldest message is at the bottom of the list, reachable by scrolling.
+  await log.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  const oldest = log.getByRole("listitem").last();
+  await expect(oldest).toContainText("GREEN LIGHT - PIT EXIT OPEN");
+  await expect(oldest).toContainText("12:20:01"); // its time, UTC
+  const inside = await log.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const item = el.lastElementChild!.getBoundingClientRect();
+    return item.top >= box.top - 1 && item.bottom <= box.bottom + 1;
+  });
+  expect(inside).toBe(true);
 });

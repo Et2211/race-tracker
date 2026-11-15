@@ -1,4 +1,5 @@
 import "server-only";
+import { DownloadBusyError } from "@/lib/storage/download-lock";
 import { StorageFullError } from "@/lib/storage/session-index";
 import { NotReadyError } from "./ingest";
 import { RateLimitedError } from "@/lib/openf1/client";
@@ -20,6 +21,7 @@ export function gzipJson(body: Buffer, cache: "day" | "immutable"): Response {
 }
 
 export function errorJson(e: unknown): Response {
+  if (e instanceof DownloadBusyError) return Response.json({ error: e.message, code: "busy" }, { status: 503, headers: { "Retry-After": "30" } });
   if (e instanceof NotReadyError) return Response.json({ error: e.message, code: "not-ready" }, { status: 409 });
   if (e instanceof StorageFullError) return Response.json({ error: e.message, code: "storage-full" }, { status: 507 });
   if (e instanceof RateLimitedError) return Response.json({ error: e.message, code: "rate-limited" }, { status: 429 });
