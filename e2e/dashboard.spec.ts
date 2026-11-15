@@ -8,7 +8,7 @@ test("home lists the reference sessions and opens one through the picker", async
   await expect(page.getByRole("heading", { name: "Choose a session" })).toBeVisible();
   await expect(page.getByRole("link", { name: "2026 Spanish Grand Prix · Race" })).toBeVisible();
   await page.getByLabel("Grand Prix").selectOption({ label: "Spanish Grand Prix · Madring" });
-  await page.getByLabel("Session", { exact: true }).selectOption({ label: "Race" });
+  await page.getByLabel("Session", { exact: true }).selectOption({ label: "Race · downloaded" });
   await page.getByRole("button", { name: "Open" }).click();
   await expect(page).toHaveURL(/\/session\/11369$/);
   await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();

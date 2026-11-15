@@ -10,12 +10,13 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "backtest": "tsx scripts/backtest.ts",
+    "backtest": "tsx scripts/backtest.mts",
     "ingest": "tsx scripts/ingest.mts",
-    "test:e2e": "next build && playwright test"
+    "test:e2e": "next build && playwright test",
+    "store:upload": "tsx scripts/store-upload.mts"
   },
   "dependencies": {
-    "@vercel/blob": "^2.9.0",
+    "@supabase/supabase-js": "^2.119.0",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"

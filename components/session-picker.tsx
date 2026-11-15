@@ -72,7 +72,10 @@ export function SessionPicker({ label, current }: { label: string; current?: { y
           <select id={`${id}-session`} className="picker" value={sessionKey ?? ""} disabled={!meeting} onChange={(e) => setSessionKey(Number(e.target.value))}>
             <option value="" disabled>Session</option>
             {meeting?.sessions.map((s) => (
-              <option key={s.sessionKey} value={s.sessionKey} disabled={!s.available}>{s.name}{s.available ? "" : " (results not final yet)"}</option>
+              <option key={s.sessionKey} value={s.sessionKey} disabled={!s.available}>
+                {s.name}
+                {!s.available ? " (results not final yet)" : s.downloaded ? " · downloaded" : " · downloads in about 1½ min"}
+              </option>
             ))}
           </select>
           <button className="seg" style={{ border: "1px solid var(--border-strong)", borderRadius: 8 }} disabled={!session?.available} onClick={() => session && router.push(`/session/${session.sessionKey}`)}>

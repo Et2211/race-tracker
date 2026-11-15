@@ -2,6 +2,7 @@ import "server-only";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { openf1 } from "@/lib/openf1/client";
 import type { Meeting, Session } from "@/lib/openf1/types";
+import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { PICKER_SESSIONS, type Catalog } from "./catalog";
@@ -33,7 +34,7 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
           .filter((s) => s.meeting_key === m.meeting_key && PICKER_SESSIONS.includes(s.session_name) && !s.is_cancelled)
           .filter((s) => Date.parse(s.date_start) < now)
           .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
-          .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: Date.parse(s.date_end) + SETTLE_MS < now })),
+          .map((s) => ({ sessionKey: s.session_key, name: s.session_name, type: s.session_type, dateStart: s.date_start, dateEnd: s.date_end, available: Date.parse(s.date_end) + SETTLE_MS < now, downloaded: false })),
       }))
       .filter((m) => m.sessions.length > 0)
       .sort((a, b) => a.dateStart.localeCompare(b.dateStart)),
@@ -43,8 +44,18 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
 export async function getCatalog(year: number): Promise<Catalog> {
   if (dataMode() === "fixtures") {
     const sessions = (await fixtureSessions()).filter((s) => s.year === year);
-    return buildCatalog(year, (await fixtureMeetings()).filter((m) => m.year === year), sessions, "fixtures");
+    const catalog = buildCatalog(year, (await fixtureMeetings()).filter((m) => m.year === year), sessions, "fixtures");
+    for (const m of catalog.meetings) for (const s of m.sessions) s.downloaded = true;
+    return catalog;
   }
+  const catalog = await cachedCatalog(year);
+  // Which sessions are downloaded changes all the time, so it is added per request, not cached.
+  const downloaded = await sessionIndex().complete();
+  for (const m of catalog.meetings) for (const s of m.sessions) s.downloaded = downloaded.has(s.sessionKey);
+  return catalog;
+}
+
+async function cachedCatalog(year: number): Promise<Catalog> {
   const key = `catalog/${year}.json`;
   const cached = await readJson<Catalog>(key);
   const finishedYear = year < new Date().getUTCFullYear();

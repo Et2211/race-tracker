@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { openf1, TooMuchDataError } from "@/lib/openf1/client";
 import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import { sessionIndex } from "@/lib/storage/session-index";
 import { readJson, writeJson } from "@/lib/storage/store";
+import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type LearnedSectors } from "./assemble";
 import { encodeChunk } from "./telemetry";
@@ -16,33 +18,17 @@ export const chunkKey = (sessionKey: number, index: number) => `sessions/${sessi
 const SETTLE_MS = 3 * 60 * 60_000;
 
 export class NotReadyError extends Error {}
-export class StorageFullError extends Error {}
 
-/**
- * Vercel Blob on Hobby includes 1 GB and is suspended for 30 days if a limit is exceeded, so new
- * sessions are refused above this. One small manifest keeps a running estimate (one extra upload
- * per session rather than one per write).
- */
-const CAP_BYTES = Number(process.env.STORE_CAP_MB ?? 900) * 1024 * 1024;
-const MANIFEST = "manifest.json";
-type Manifest = { bytes: number; sessions: Record<string, number> };
-const estimateBytes = (windows: number) => 500_000 + windows * 700_000;
-
-async function reserve(sessionKey: number, windows: number) {
-  const manifest = (await readJson<Manifest>(MANIFEST)) ?? { bytes: 0, sessions: {} };
-  if (manifest.sessions[sessionKey] !== undefined) return;
-  const needed = estimateBytes(windows);
-  if (manifest.bytes + needed > CAP_BYTES) {
-    const mb = (n: number) => Math.round(n / 1024 / 1024);
-    throw new StorageFullError(`Session storage is nearly full (${mb(manifest.bytes)} MB of ${mb(CAP_BYTES)} MB used), so new sessions cannot be downloaded. Already downloaded sessions still open.`);
-  }
-  manifest.sessions[sessionKey] = needed;
-  manifest.bytes += needed;
-  await writeJson(MANIFEST, manifest);
-}
-
-/** Learned marshal-sector positions committed in data/marshal-sectors. */
+/** Learned marshal-sector positions: the Supabase table when configured, else data/marshal-sectors. */
 export async function learnedSectors(circuitKey: number): Promise<LearnedSectors | null> {
+  if (supabaseConfigured()) {
+    const { data, error } = await supabase().from("marshal_observations").select("sector, arc_dm, session_key").eq("circuit_key", circuitKey);
+    if (error) throw error;
+    if (!data.length) return null;
+    const observations: LearnedSectors["observations"] = {};
+    for (const row of data) (observations[row.sector] ??= []).push({ arc: row.arc_dm, session_key: row.session_key });
+    return { count: null, observations };
+  }
   try {
     const raw = await readFile(path.join(process.cwd(), "data", "marshal-sectors", `${circuitKey}.json`), "utf8");
     const parsed = JSON.parse(raw) as { count?: number; observations: LearnedSectors["observations"] };
@@ -123,10 +109,16 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     throw new NotReadyError("This session ended less than three hours ago. OpenF1 is still adding results; try again later.");
   }
   // Check the storage cap before spending any more requests; size estimated from the schedule.
-  const scheduledWindows = Math.ceil((Date.parse(session.date_end) - Date.parse(session.date_start) + 30 * 60_000) / WINDOW_MS);
-  await reserve(sessionKey, scheduledWindows);
-  const [[meeting], drivers, { laps, raceControl, results }, positions, pits] = await Promise.all([
-    openf1<Meeting>("meetings", { meeting_key: session.meeting_key }),
+  const [meeting] = await openf1<Meeting>("meetings", { meeting_key: session.meeting_key });
+  await sessionIndex().reserve({
+    sessionKey,
+    year: session.year,
+    meetingName: meeting?.meeting_name ?? session.circuit_short_name,
+    sessionName: session.session_name,
+    circuitKey: session.circuit_key,
+    windows: Math.ceil((Date.parse(session.date_end) - Date.parse(session.date_start) + 30 * 60_000) / WINDOW_MS),
+  });
+  const [drivers, { laps, raceControl, results }, positions, pits] = await Promise.all([
     openf1<Driver>("drivers", { session_key: sessionKey }),
     timing(sessionKey),
     openf1<PositionRow>("position", { session_key: sessionKey }),
@@ -176,7 +168,9 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     qualifying,
     source: "openf1",
   });
-  await writeJson(metaKey(sessionKey), meta);
+  const bytes = await writeJson(metaKey(sessionKey), meta);
+  await sessionIndex().setWindows(sessionKey, meta.windows.length);
+  await sessionIndex().added(sessionKey, bytes, false);
   return meta;
 }
 
@@ -205,6 +199,7 @@ async function downloadWindow(meta: SessionMeta, index: number): Promise<Telemet
   const location = await fetchRange<LocationRow>("location", meta.session.session_key, w.from, w.to);
   const carData = await fetchRange<CarDataRow>("car_data", meta.session.session_key, w.from, w.to);
   const chunk = encodeChunk(index, w.from, w.to, location, carData);
-  await writeJson(key, chunk);
+  const bytes = await writeJson(key, chunk);
+  await sessionIndex().added(meta.session.session_key, bytes, true);
   return chunk;
 }

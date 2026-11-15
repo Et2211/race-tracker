@@ -32,7 +32,8 @@ To work offline, set `F1_DATA_MODE=fixtures`: only the four recorded sessions in
 | `npm test` | Unit tests (Vitest), against recorded fixtures |
 | `npm run test:e2e` | Build, then end-to-end tests (Playwright) in fixture mode at desktop and phone sizes, including axe accessibility checks. Run `npx playwright install chromium` once first. |
 | `npm run ingest -- <session keys>` or `-- --year 2026 --type Race` | Download sessions into the store through a running server (`BASE_URL`, default `http://localhost:3000`) |
-| `npm run backtest [-- --sweep]` | Score the stopped-car inference against every ingested session; writes `docs/m6-backtest.md` |
+| `npm run backtest [-- --sweep] [-- --learn]` | Score the stopped-car inference against every downloaded session (local store); writes `docs/m6-backtest.md`. `--learn` records marshal-sector positions (to Supabase when configured, else `data/marshal-sectors`) |
+| `npm run store:upload [-- <session keys>]` | Copy sessions from the local store to Supabase so they need not be fetched from OpenF1 again |
 
 ## Environment variables
 
@@ -42,18 +43,18 @@ All are server-only; see [`.env.example`](.env.example).
 | --- | --- |
 | `F1_DATA_MODE` | `openf1` (default) or `fixtures` (recorded sessions only, no network) |
 | `OPENF1_API_BASE` | OpenF1 base URL (default `https://api.openf1.org/v1`) |
-| `BLOB_READ_WRITE_TOKEN` | Use Vercel Blob for the session store (set automatically when a Blob store is connected to the Vercel project). Without it, sessions are stored on disk. |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Store downloaded sessions in Supabase (private `sessions` bucket, `stored_sessions` and `marshal_observations` tables; schema in `supabase/migrations`). Use the project's secret key (`sb_secret_…`); it stays on the server. Without them, sessions are stored on disk. |
 | `STORE_DIR` | Disk store location (default `.cache/store`) |
 | `STORE_CAP_MB` | Refuse new downloads above this size (default 900) |
 | `OPENF1_USERNAME`, `OPENF1_PASSWORD` | Reserved for live mode (paid OpenF1 tier). Not used yet. |
 
 ## How it works
 
-- **Data** comes only from the server. The browser asks the app's API; the server fetches OpenF1 at the free tier's pace (one request every 2.1 s) and stores each session as gzipped JSON: one metadata file (timing, flags, results, the circuit outline) and one file per 15 minutes of car positions and car data. A race is about 5 MB stored.
+- **Data** comes only from the server. The browser asks the app's API; the server fetches OpenF1 at the free tier's pace (one request every 2.1 s) and stores each session as gzipped JSON in Supabase Storage (or on disk in development): one metadata file (timing, flags, results, the circuit outline) and one file per 15 minutes of car positions and car data. A race is about 5 MB stored. A `stored_sessions` table tracks what is stored, for the size cap and the picker's "downloaded" markers. Car telemetry is kept as files, not rows: about 1.2 million samples a race would fill the free database in a handful of races.
 - **Ingest** is driven by the browser one step at a time, so each step fits in a Vercel Hobby function (300 s) and progress is visible. The window under the playhead downloads first.
 - **Replay** runs in the browser. Everything shown is calculated from the session data at the replay time, so playing, pausing, 1–16× speeds, scrubbing and jumping to a lap or a qualifying phase (forwards or backwards) all stay consistent.
 - **Track outline**: the racing line of one fast lap, from OpenF1 car positions, so cars sit on it by construction. Sector boundaries come from that lap's sector times.
-- **Marshal sectors**: OpenF1 only gives a flagged sector's number. Where MultiViewer has a circuit file, the server fetches it once and caches it, and the flagged stretch runs from that sector's marker to the next. Elsewhere a stretch is drawn only where stops in at least two other sessions have located it (`data/marshal-sectors/`, written by `npm run backtest -- --learn`); otherwise the sector is named but not drawn.
+- **Marshal sectors**: OpenF1 only gives a flagged sector's number. Where MultiViewer has a circuit file, the server fetches it once and caches it, and the flagged stretch runs from that sector's marker to the next. Elsewhere a stretch is drawn only where stops in at least two other sessions have located it (the `marshal_observations` table, or `data/marshal-sectors/` without Supabase, written by `npm run backtest -- --learn`); otherwise the sector is named but not drawn.
 - **Stopped cars**: cars below 30 km/h on the racing line from 30 s before a yellow until 5 s after, having been at racing speed shortly before, excluding the pit lane and the start. A nearby car whose speed fell sharply at that moment is listed as possible contact. Confidence is "high" only once race control names the car in an incident at that time. See `docs/m6-backtest.md` for how well this works.
 
 ## Data sources
@@ -70,8 +71,8 @@ All are server-only; see [`.env.example`](.env.example).
 - Race control sometimes never sends the "clear" for a sector; a flag older than 10 minutes says so instead of being hidden.
 - Stopped-car detection is an inference from speed and position, not a steward's report, and never states fault.
 - Live mode is not built (it needs OpenF1's paid tier).
-- The Vercel Blob store backend has not yet been run against a real store.
-- New downloads stop at `STORE_CAP_MB` (default 900 MB) to stay inside Vercel Blob's Hobby allowance; there is no automatic eviction.
+- New downloads stop at `STORE_CAP_MB` (default 900 MB) to stay inside Supabase's free 1 GB of storage; there is no automatic eviction.
+- Supabase pauses free projects after 7 days without activity; resume it from the dashboard (data is kept).
 - The session-download API is unauthenticated; keep a deployment's URL private or add a shared secret.
 
 ## Project notes

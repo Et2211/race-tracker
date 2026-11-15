@@ -1,5 +1,6 @@
 import "server-only";
-import { NotReadyError, StorageFullError } from "./ingest";
+import { StorageFullError } from "@/lib/storage/session-index";
+import { NotReadyError } from "./ingest";
 import { RateLimitedError } from "@/lib/openf1/client";
 
 /**

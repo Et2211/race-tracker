@@ -9,6 +9,8 @@
  *                                    # without MultiViewer data in data/marshal-sectors/
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import nextEnv from "@next/env"; // CommonJS: no named exports in ES modules
+import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { flagStateAt, type FlagGroup } from "@/lib/flags/state";
@@ -19,8 +21,27 @@ import { marshalSectors } from "@/lib/session/assemble";
 import { TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta, TelemetryChunk } from "@/lib/session/types";
 
+nextEnv.loadEnvConfig(process.cwd());
 const STORE = process.env.STORE_DIR ?? path.join(process.cwd(), ".cache", "store");
-const read = <T>(key: string): T | null => {
+// Learned positions live in Supabase when it is configured, else in data/marshal-sectors.
+const db = process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } }) : null;
+type Observation = { arc: number; session_key: number; date: string; driver_number: number };
+
+async function learnedFor(circuitKey: number): Promise<Record<string, Observation[]>> {
+  if (db) {
+    const { data, error } = await db.from("marshal_observations").select("sector, arc_dm, session_key, driver_number, stopped_at").eq("circuit_key", circuitKey);
+    if (error) throw error;
+    const out: Record<string, Observation[]> = {};
+    for (const r of data) (out[r.sector] ??= []).push({ arc: r.arc_dm, session_key: r.session_key, date: r.stopped_at, driver_number: r.driver_number });
+    return out;
+  }
+  try {
+    return JSON.parse(readFileSync(path.join(process.cwd(), "data", "marshal-sectors", `${circuitKey}.json`), "utf8")).observations ?? {};
+  } catch {
+    return {};
+  }
+}
+const read = <T,>(key: string): T | null => {
   try {
     return JSON.parse(gunzipSync(readFileSync(path.join(STORE, `${key}.gz`))).toString("utf8")) as T;
   } catch {
@@ -53,17 +74,15 @@ type Case = {
   multiviewer: boolean;
 };
 
-function load() {
+async function load() {
   const sessions: { meta: SessionMeta; telemetry: TelemetryIndex }[] = [];
   for (const key of readdirSync(path.join(STORE, "sessions"))) {
     const meta = read<SessionMeta>(`sessions/${key}/meta.json`);
     if (!meta || !meta.outline) continue;
     if (meta.marshal.source !== "multiviewer") {
       // Learned positions, leaving this session's own stops out (as the app does).
-      try {
-        const learned = JSON.parse(readFileSync(path.join(process.cwd(), "data", "marshal-sectors", `${meta.session.circuit_key}.json`), "utf8"));
-        meta.marshal = marshalSectors(meta.outline, null, { count: learned.count ?? null, observations: learned.observations }, meta.session.session_key);
-      } catch {}
+      const observations = await learnedFor(meta.session.circuit_key);
+      if (Object.keys(observations).length) meta.marshal = marshalSectors(meta.outline, null, { count: null, observations }, meta.session.session_key);
     }
     const telemetry = new TelemetryIndex();
     let complete = true;
@@ -100,7 +119,7 @@ function condition(meta: SessionMeta, at: number): string {
   return "green";
 }
 
-function run(sessions: ReturnType<typeof load>, params: typeof DETECTOR, evalAfterMs = 60_000): Case[] {
+function run(sessions: Awaited<ReturnType<typeof load>>, params: typeof DETECTOR, evalAfterMs = 60_000): Case[] {
   const cases: Case[] = [];
   for (const { meta, telemetry } of sessions) {
     const incidents = namedIncidents(meta.raceControl, meta.meeting.gmt_offset ?? "00:00:00");
@@ -159,7 +178,7 @@ function summary(cases: Case[]) {
   };
 }
 
-const sessions = load();
+const sessions = await load();
 const all = run(sessions, DETECTOR);
 const green = all.filter((c) => c.condition === "green");
 const lines: string[] = [];
@@ -203,21 +222,32 @@ if (process.argv.includes("--learn")) {
   // How good is this on circuits that do have markers?
   const check = clean.filter((c) => c.inSector !== null);
   lines.push("## Learned marshal-sector positions", "", `Clean observations (green running, one car, stopped within 15 s of the flag): ${clean.length}. On circuits with MultiViewer markers, ${check.filter((c) => c.inSector).length} of ${check.length} fall inside the flagged stretch.`, "");
-  const dir = path.join(process.cwd(), "data", "marshal-sectors");
   for (const ck of new Set(clean.filter((c) => !c.multiviewer).map((c) => c.circuitKey))) {
-    const file = path.join(dir, `${ck}.json`);
-    let existing: { observations?: Record<string, { arc: number; session_key: number; date: string; driver_number: number }[]> } & Record<string, unknown> = {};
-    try {
-      existing = JSON.parse(readFileSync(file, "utf8"));
-    } catch {}
-    const observations = existing.observations ?? {};
+    const observations = await learnedFor(ck);
+    const fresh: (Observation & { sector: number })[] = [];
     for (const c of clean.filter((x) => x.circuitKey === ck)) {
       const list = (observations[c.sector] ??= []);
       // One observation per car per session: a parked car re-flagged several times is one incident.
-      if (!list.some((o) => o.session_key === c.sessionKey && o.driver_number === c.detected[0])) list.push({ arc: Math.round(c.arc!), session_key: c.sessionKey, date: c.stoppedAt!, driver_number: c.detected[0] });
+      if (list.some((o) => o.session_key === c.sessionKey && o.driver_number === c.detected[0])) continue;
+      const o = { arc: Math.round(c.arc!), session_key: c.sessionKey, date: c.stoppedAt!, driver_number: c.detected[0] };
+      list.push(o);
+      fresh.push({ ...o, sector: c.sector });
     }
-    writeFileSync(file, JSON.stringify({ circuit_key: ck, ...existing, note: existing.note ?? "Where cars stopped on the racing line under isolated flags (decimetres from the start line). Written by `npm run backtest -- --learn`. A sector is drawn only with two observations within 100 m.", observations }, null, 2) + "\n");
-    lines.push(`- circuit ${ck}: ${Object.entries(observations).map(([s, o]) => `sector ${s} × ${o.length}`).join(", ")}`);
+    if (db && fresh.length) {
+      const { error } = await db.from("marshal_observations").upsert(
+        fresh.map((o) => ({ circuit_key: ck, sector: o.sector, arc_dm: o.arc, session_key: o.session_key, driver_number: o.driver_number, stopped_at: o.date })),
+        { onConflict: "circuit_key,sector,session_key,driver_number", ignoreDuplicates: true },
+      );
+      if (error) throw error;
+    } else if (!db) {
+      const file = path.join(process.cwd(), "data", "marshal-sectors", `${ck}.json`);
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(readFileSync(file, "utf8"));
+      } catch {}
+      writeFileSync(file, JSON.stringify({ circuit_key: ck, ...existing, observations }, null, 2) + "\n");
+    }
+    lines.push(`- circuit ${ck}: ${Object.entries(observations).map(([s, o]) => `sector ${s} × ${o.length}`).join(", ")}${db ? " (Supabase)" : ""}`);
   }
   lines.push("");
 }

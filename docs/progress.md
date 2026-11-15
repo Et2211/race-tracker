@@ -139,3 +139,13 @@ Excluded by the brief and needs the paid OpenF1 tier. M1 §11 has the relay desi
 - **Driver selection**: clicking the selected driver again, clicking anywhere that is not a driver, or pressing Escape clears it.
 - Checks: 47 unit tests, 14 end-to-end tests (desktop and phone), lint and typecheck clean.
 - **Position changes animate**: race and qualifying rows slide to their new places when the order changes during playback (`components/use-row-flip.ts`, browser animation API, no new dependency). Jumps of more than 30 s of session time (scrubbing, jump to lap) snap instead, and nothing animates when the system asks for reduced motion. The qualifying panel beside a race shows the final result, so it does not move. 20 end-to-end tests.
+
+## Supabase storage (2026-11-15)
+
+- Supabase project `race-tracker` (free plan, eu-west-1). Migration `supabase/migrations/20261115120000_init.sql`, applied: tables `stored_sessions` (what is stored, real sizes, windows) and `marshal_observations` (learned positions, seeded with the 4 from `data/marshal-sectors`), an `add_stored_bytes` function, and a private `sessions` bucket (gzip only, 50 MB per file). Row-level security is on with no policies and the public roles have no privileges, so only the server's secret key can read or write; the security advisor reports only that intentional "RLS enabled, no policy" note.
+- The store uses Supabase when `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are set, else the disk (development and tests). The Vercel Blob backend, never run against a real store, was removed.
+- The storage cap and the picker's "· downloaded" markers come from `stored_sessions` (or a manifest beside the disk store, which counts sessions downloaded before it existed).
+- Car telemetry stays as gzipped files in Storage rather than rows: ~1.2 million samples per race would pass the free plan's 500 MB database limit within a few races.
+- `vercel.json` sets the functions' region to Dublin (`dub1`) to sit next to the Supabase project.
+- `npm run store:upload` copies already-downloaded local sessions to Supabase.
+- Verified against the real project: `npm run store:upload -- 11369` stored the Spanish GP race (8 files, 4.48 MB; the table row matches the files exactly); the app served its metadata in 0.63 s and a telemetry window in 0.47 s from Supabase; a first-time download of the 2024 São Paulo race through the app went straight into Supabase (10 windows, 110 s, 4.33 MB, row and files agree) and the dashboard renders it with no accessibility violations. Without the secret key, the bucket answers 400 and the table API 401.
