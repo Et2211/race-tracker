@@ -1,4 +1,4 @@
-import type { Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import type { Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult, Stint } from "@/lib/openf1/types";
 import { buildOutline, type Outline, type TimedPoint } from "@/lib/track/geometry";
 import { sectorsFromMultiViewer, type MarshalSectors, type MultiViewerCircuit } from "@/lib/track/markers";
 import { sessionKind, type QualifyingTiming, type SessionMeta } from "./types";
@@ -83,6 +83,7 @@ export type RawSession = {
   positions: PositionRow[];
   intervals: IntervalRow[];
   pits: PitRow[];
+  stints?: Stint[];
   results: SessionResult[];
   outline: Outline | null;
   outlineNote: string;
@@ -117,6 +118,7 @@ export function assembleMeta(raw: RawSession): SessionMeta {
     positions: byDate(raw.positions),
     intervals: byDate(raw.intervals),
     pits: raw.pits,
+    ...(raw.stints ? { stints: raw.stints } : {}),
     results: raw.results,
     outline: raw.outline,
     outlineNote: raw.outlineNote,

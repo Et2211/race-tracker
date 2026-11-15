@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Lap, PositionRow } from "@/lib/openf1/types";
+import type { Lap, PositionRow, Stint } from "@/lib/openf1/types";
 import { fixture } from "@/test/fixtures";
-import { battlesAt } from "./battles";
+import { battlesAt, passingAid, tyreState } from "./battles";
 
 const T0 = Date.parse("2026-06-01T13:00:00Z");
 const LAP = 90;
@@ -86,5 +86,62 @@ describe("battles", () => {
       expect(b.gap).toBeGreaterThanOrEqual(0);
       expect(b.gap).toBeLessThanOrEqual(5);
     }
+  });
+
+  it("names DRS until 2025 and Overtake Mode from 2026", () => {
+    expect(passingAid(2025)).toBe("DRS");
+    expect(passingAid(2026)).toBe("Overtake Mode");
+  });
+
+  it("works out tyres and stops from the stints", () => {
+    const stints = fixture<Stint[]>("2026-madrid-race", "stints");
+    // #16 ran hards from the start to lap 48, then softs from lap 49.
+    expect(tyreState(stints, 16, 30)).toEqual({ compound: "HARD", age: 29, stops: 0, wet: false });
+    expect(tyreState(stints, 16, 52)).toEqual({ compound: "SOFT", age: 3, stops: 1, wet: false });
+  });
+
+  it("marks a car that has stopped and is catching on fresh tyres as strategy, not a fight", () => {
+    const stint = (driver: number, n: number, from: number, compound: string): Stint => ({ driver_number: driver, stint_number: n, lap_start: from, lap_end: null, compound, tyre_age_at_start: 0 });
+    const all = [
+      ...laps(1, () => 0),
+      ...laps(2, () => 0.5), // car 2 has stopped and closed right up to car 1, which has not
+      ...laps(3, () => 30),
+      ...laps(4, () => 31.5), // a real fight on similar tyres, 1.5 s apart
+    ];
+    const stints = [stint(1, 1, 1, "MEDIUM"), stint(2, 1, 1, "MEDIUM"), stint(2, 2, 6, "HARD"), stint(3, 1, 1, "MEDIUM"), stint(4, 1, 1, "MEDIUM")];
+    const found = battlesAt(all, [1, 2, 3, 4], AFTER, { stints });
+    expect(found.map((b) => [b.ahead, b.behind])).toEqual([
+      [3, 4],
+      [1, 2],
+    ]);
+    expect(found[0].strategy).toBeNull();
+    expect(found[1].strategy).toEqual({ fresher: "behind", ageGap: 5, stopsAhead: 0, stopsBehind: 1 });
+    expect(found[1].tyres.behind).toEqual({ compound: "HARD", age: 4, stops: 1, wet: false });
+  });
+
+  it("treats the same number of stops with a small tyre-age gap as a real fight", () => {
+    const stint = (driver: number, from: number): Stint => ({ driver_number: driver, stint_number: from === 1 ? 1 : 2, lap_start: from, lap_end: null, compound: "HARD", tyre_age_at_start: 0 });
+    const all = [...laps(1, () => 0), ...laps(2, () => 0.5)];
+    const stints = [stint(1, 1), stint(1, 4), stint(2, 1), stint(2, 6)];
+    const [b] = battlesAt(all, [1, 2], AFTER, { stints });
+    expect(b.kind).toBe("fight");
+    expect(b.strategy).toBeNull();
+  });
+
+  it("treats different stop counts on similar tyres as a real fight once both have stopped", () => {
+    // Lap 45 in Madrid: #55 (two stops) 0.9 s behind #77 (one stop), tyres two laps apart.
+    const stint = (driver: number, n: number, from: number): Stint => ({ driver_number: driver, stint_number: n, lap_start: from, lap_end: null, compound: "HARD", tyre_age_at_start: 0 });
+    const all = [...laps(1, () => 0), ...laps(2, () => 0.9)];
+    const [b] = battlesAt(all, [1, 2], AFTER, { stints: [stint(1, 1, 1), stint(1, 2, 5), stint(2, 1, 1), stint(2, 2, 3), stint(2, 3, 6)] });
+    expect(b.kind).toBe("fight");
+    expect(b.strategy).toBeNull();
+  });
+
+  it("does not assume a car on intermediates still has to stop", () => {
+    const stint = (driver: number, compound: string): Stint => ({ driver_number: driver, stint_number: 1, lap_start: 1, lap_end: null, compound, tyre_age_at_start: 0 });
+    const inter = (driver: number, n: number, from: number): Stint => ({ driver_number: driver, stint_number: n, lap_start: from, lap_end: null, compound: "INTERMEDIATE", tyre_age_at_start: 0 });
+    const all = [...laps(1, () => 0), ...laps(2, () => 0.6)];
+    const [b] = battlesAt(all, [1, 2], AFTER, { stints: [stint(1, "INTERMEDIATE"), stint(2, "INTERMEDIATE"), inter(2, 2, 5)] });
+    expect(b.strategy).toBeNull();
   });
 });

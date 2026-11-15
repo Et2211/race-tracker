@@ -2,7 +2,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { openf1, TooMuchDataError } from "@/lib/openf1/client";
-import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult } from "@/lib/openf1/types";
+import type { CarDataRow, Driver, IntervalRow, Lap, LocationRow, Meeting, PitRow, PositionRow, RaceControl, Session, SessionResult, Stint } from "@/lib/openf1/types";
 import { withDownloadLock } from "@/lib/storage/download-lock";
 import { downloadLocks } from "@/lib/storage/locks";
 import { sessionIndex } from "@/lib/storage/session-index";
@@ -150,6 +150,7 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   ]);
   const isRace = session.session_type === "Race";
   const intervals = isRace ? await openf1<IntervalRow>("intervals", { session_key: sessionKey }) : [];
+  const stints = isRace ? await openf1<Stint>("stints", { session_key: sessionKey }) : undefined;
 
   let qualifying: SessionMeta["qualifying"] = null;
   let qualifyingLaps: Lap[] = [];
@@ -184,6 +185,7 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     positions,
     intervals,
     pits,
+    stints,
     results,
     outline,
     outlineNote,

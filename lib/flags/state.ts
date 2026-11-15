@@ -96,6 +96,7 @@ export function flagStateAt(raceControl: RaceControl[], t: number): FlagState {
 }
 
 /** The race-control lines worth showing in the log, newest first. Blue flags are left out as noise. */
+/** Race-control messages up to `t`, newest first, at most `limit` (Infinity for all). Blue flags are left out. */
 export function logAt(raceControl: RaceControl[], t: number, limit: number): RaceControl[] {
   return raceControl
     .filter((row) => Date.parse(row.date) <= t && row.flag !== "BLUE")

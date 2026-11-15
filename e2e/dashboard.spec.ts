@@ -179,3 +179,45 @@ test("sync to video jumps to lights out, plays at normal speed and ends when the
   await page.getByRole("group", { name: "Playback speed" }).getByRole("button", { name: "4×" }).click();
   await expect(page.getByText("Sync to video", { exact: true })).toBeVisible();
 });
+
+test("worth watching marks a car on fresher tyres catching one still to stop as strategy", async ({ page }) => {
+  // Lap 35 of the 2026 Madrid race: #63 is 1.1 s behind #30 on tyres 28 laps fresher; #30 has not stopped.
+  await page.goto("/session/11369?t=2026-09-13T14:01:37Z");
+  await loaded(page);
+  const row = page.getByRole("region", { name: "Worth watching" }).getByRole("button", { name: /#63 on .*#30 for P/ });
+  await expect(row).toContainText("Strategy");
+  await expect(row).toContainText("Not a straight fight");
+  await expect(row).toContainText("has not stopped yet");
+});
+
+test("retired cars leave the map once they have stopped", async ({ page }) => {
+  // #44 retired on lap 7 and sits in the garage; #18 crawls to a halt on track at about 13:26:50 during the lap-14 VSC.
+  await page.goto("/session/11369?t=2026-09-13T13:26:46Z");
+  await loaded(page);
+  await expect(page.locator('svg.map [data-driver="44"]')).toHaveCount(0);
+  await expect(page.locator('svg.map [data-driver="18"]')).toHaveCount(1);
+  await page.goto("/session/11369?t=2026-09-13T13:27:30Z");
+  await loaded(page);
+  await expect(page.locator('svg.map [data-driver="18"]')).toHaveCount(0);
+  await expect(page.locator('svg.map [data-driver="63"]')).toHaveCount(1);
+});
+
+test("race control keeps every message so far and scrolls", async ({ page }) => {
+  await page.goto("/session/11369?t=2026-09-13T14:30:00Z");
+  await loaded(page);
+  const log = page.getByRole("list", { name: "Race control" });
+  expect(await log.getByRole("listitem").count()).toBeGreaterThan(20);
+  const { scrolls } = await log.evaluate((el) => ({ scrolls: el.scrollHeight > el.clientHeight }));
+  expect(scrolls).toBe(true);
+  // The oldest message is at the bottom of the list, reachable by scrolling.
+  await log.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  const oldest = log.getByRole("listitem").last();
+  await expect(oldest).toContainText("GREEN LIGHT - PIT EXIT OPEN");
+  await expect(oldest).toContainText("12:20:01"); // its time, UTC
+  const inside = await log.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const item = el.lastElementChild!.getBoundingClientRect();
+    return item.top >= box.top - 1 && item.bottom <= box.bottom + 1;
+  });
+  expect(inside).toBe(true);
+});

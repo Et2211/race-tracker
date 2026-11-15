@@ -1,9 +1,10 @@
 import { battlesAt } from "@/lib/timing/battles";
 import { flagStateAt, logAt, logTone, STALE_AFTER_MS, type FlagGroup } from "@/lib/flags/state";
+import { isRetiredAt, retirements } from "@/lib/incident/retired";
 import { incidentsNear, namedIncidents, type NamedIncident } from "@/lib/incident/messages";
 import { DETECTOR, findStoppedCars } from "@/lib/incident/stopped";
 import { flaggedStretch, splitByStretch } from "@/lib/incident/stretch";
-import type { Driver, Lap } from "@/lib/openf1/types";
+import type { Driver, Lap, RaceControl } from "@/lib/openf1/types";
 import { traceAt, type TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
 import { formatClock } from "@/lib/timing/format";
@@ -198,6 +199,18 @@ function qualifyingView(meta: SessionMeta, t: number): QualifyingView | null {
   return null;
 }
 
+/** A stable key for a race-control row; the feed occasionally repeats a message at the same moment. */
+const logIds = new WeakMap<RaceControl, string>();
+let nextLogId = 0;
+function logId(row: RaceControl): string {
+  let id = logIds.get(row);
+  if (!id) {
+    id = `rc${nextLogId++}`;
+    logIds.set(row, id);
+  }
+  return id;
+}
+
 export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: TelemetryIndex, t: number): Snapshot {
   const state = flagStateAt(meta.raceControl, t);
   const incidents = namedIncidents(meta.raceControl, meta.meeting.gmt_offset ?? meta.session.gmt_offset ?? "00:00:00");
@@ -209,8 +222,16 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
   const race = isRace ? buildRaceTable(meta.laps, meta.positions, meta.intervals, t, finished ? Infinity : undefined) : null;
 
   const cars: CarDot[] = [];
+  // Cars that retired from a race leave the map once they have stopped for good.
+  const finalLaps = isRace ? retirements(meta.results, meta.laps) : new Map<number, number>();
+  const retired: number[] = [];
+  for (const [driver, finalLap] of finalLaps) {
+    const trace = telemetry.traces.get(driver);
+    if (finalLap === -Infinity || (trace && isRetiredAt(trace, finalLap, t))) retired.push(driver);
+  }
   if (view.transform) {
     for (const [driver, trace] of telemetry.traces) {
+      if (retired.includes(driver)) continue;
       const p = traceAt(trace, t);
       if (p) cars.push({ driver, ...toMap(view.transform, p) });
     }
@@ -232,7 +253,7 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
       : state.safetyCar
         ? `${state.safetyCar.kind === "VSC" ? "Virtual safety car" : "Safety car"}: gaps are frozen or bunched up until the restart.`
         : null;
-    watch = { battles: note ? [] : battlesAt(meta.laps, race.map((r) => r.driver), t), note };
+    watch = { battles: note ? [] : battlesAt(meta.laps, race.map((r) => r.driver), t, { stints: meta.stints ?? null }), note };
   }
   return {
     t,
@@ -244,6 +265,7 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
     safetyCar: state.safetyCar ? { kind: state.safetyCar.kind, ending: state.safetyCar.ending } : null,
     red: state.red,
     cars,
+    retired,
     telemetryLoaded: telemetry.covers(t),
     positionsAvailable: telemetry.covers(t) && telemetry.hasPositionsNear(t),
     race,
@@ -253,10 +275,13 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
     trend,
     watch,
     qualifying: qualifyingView(meta, t),
-    log: logAt(meta.raceControl, t, 6).map((row) => ({
+    // Every message so far, newest first; the panel scrolls.
+    log: logAt(meta.raceControl, t, Infinity).map((row) => ({
+      id: logId(row),
       lap: isRace && Date.parse(row.date) >= start ? row.lap_number : null,
       pre: isRace && Date.parse(row.date) < start,
       time: formatClock(Date.parse(row.date)),
+      iso: new Date(Date.parse(row.date)).toISOString(),
       text: row.message,
       tone: logTone(row),
     })),
