@@ -4,18 +4,18 @@ import { expect, test, type Page } from "@playwright/test";
 const loaded = (page: Page) => expect(page.getByText(/Car data (\d+) of \1 parts loaded/)).toBeVisible({ timeout: 20_000 });
 
 test("home shows the season calendar, opens a race from it and links back", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?season=2026"); // a fixed season: the default is the current year
   await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
   await page.getByRole("link", { name: "Watch the race: Spanish Grand Prix" }).click();
   await expect(page).toHaveURL(/\/session\/11369$/);
   await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();
   await page.getByRole("link", { name: "← All sessions" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^\d{4} calendar$/ })).toBeVisible(); // the current season, whatever year it is
 });
 
 test("home has no detectable accessibility violations and fits the screen", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?season=2026"); // a fixed season: the default is the current year
   await expect(page.getByRole("heading", { name: "2026 calendar" })).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
@@ -52,14 +52,13 @@ test("race replay shows the lap-5 yellow, the stopped car and the race-control l
 test("play, speed, jump forwards and backwards keep the dashboard consistent", async ({ page }) => {
   await page.goto("/session/11369?t=2026-09-13T13:12:27Z");
   await loaded(page);
-  const label = page.locator("label[for=scrub]");
+  const label = page.locator(".clock-label");
   await expect(label).toContainText("Replay lap 6");
 
   await page.getByRole("button", { name: "16×", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await page.waitForTimeout(1500);
+  await expect(label).not.toContainText("13:12:27"); // time moves on
   await page.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(label).not.toContainText("13:12:27");
 
   await page.getByLabel("Jump to").selectOption({ label: "Lap 40" });
   await expect(label).toContainText("Replay lap 40");
@@ -76,14 +75,17 @@ test("play, speed, jump forwards and backwards keep the dashboard consistent", a
 test("qualifying replay jumps to phases and shows the red flag", async ({ page }) => {
   await page.goto("/session/11408");
   await expect(page.getByRole("heading", { name: "São Paulo Grand Prix" })).toBeVisible();
-  await page.getByLabel("Jump to").selectOption({ label: "Q1" });
-  const slider = page.getByRole("slider");
-  // Two and a half minutes into Q1 the session was red-flagged.
-  await slider.focus();
-  for (let i = 0; i < 150; i++) await page.keyboard.press("ArrowRight");
+  const phases = page.getByRole("group", { name: "Jump to a phase" });
+  await phases.getByRole("button", { name: "Q1" }).click();
+  await expect(page.getByRole("timer")).toContainText("Q1 starts in 0:10"); // lands 10 s before the start
+  // 2:23 into Q1 the session was red-flagged: the clock stops with 15:37.4 left, shown rounded up.
+  await page.goto("/session/11408?t=2026-11-07T18:02:40Z");
   await expect(page.getByText("Red flag · session stopped")).toBeVisible();
-  await page.getByLabel("Jump to").selectOption({ label: "Q2" });
-  await expect(page.locator("label[for=scrub]")).toContainText("Q2");
+  await expect(page.getByRole("timer")).toContainText("Q1 · clock stopped · 15:38 left");
+  await phases.getByRole("button", { name: "Q2" }).click();
+  await expect(phases.getByRole("button", { name: "Q2" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("timer")).toContainText("Q2 starts in 0:10");
+  await expect(page.getByRole("checkbox", { name: "Skip breaks" })).toBeChecked();
 });
 
 test("the dashboard has no detectable accessibility violations", async ({ page }) => {
@@ -135,9 +137,9 @@ test("race rows slide when positions change during playback, and snap on a jump"
   await expect.poll(() => rowAnimations(page, "Race order"), { timeout: 10_000, intervals: [50] }).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 
-  await page.waitForTimeout(600);
+  await expect.poll(() => rowAnimations(page, "Race order")).toBe(0); // the slide has finished
   await page.getByLabel("Jump to").selectOption({ label: "Lap 30" });
-  await expect(page.locator("label[for=scrub]")).toContainText("Replay lap 30");
+  await expect(page.locator(".clock-label")).toContainText("Replay lap 30");
   expect(await rowAnimations(page, "Race order")).toBe(0);
 });
 
@@ -160,7 +162,7 @@ test("rows do not animate when the system asks for reduced motion", async ({ pag
     seen += await rowAnimations(page, "Race order");
     await page.waitForTimeout(100);
   }
-  await expect(page.locator("label[for=scrub]")).not.toContainText("13:12:20");
+  await expect(page.locator(".clock-label")).not.toContainText("13:12:20");
   expect(seen).toBe(0);
 });
 
@@ -173,7 +175,7 @@ test("sync to video jumps to lights out, plays at normal speed and ends when the
   await expect(page.getByRole("status").filter({ hasText: "Synced at lights out." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Playback speed" }).getByRole("button", { name: "1×" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("label[for=scrub]")).toContainText("Replay lap 1");
+  await expect(page.locator(".clock-label")).toContainText("Replay lap 1");
   await page.getByRole("button", { name: "+5 s" }).click();
   await expect(page.getByText("Synced to video")).toBeVisible();
   await page.getByRole("group", { name: "Playback speed" }).getByRole("button", { name: "4×" }).click();
@@ -226,6 +228,8 @@ test("the live page says live data is not set up when the server has no OpenF1 a
   await page.goto("/live/11369");
   await expect(page.getByRole("heading", { name: "Could not connect to the live session" })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Live data is not set up" })).toBeVisible();
+  // A replay of a session that is not on now offers no live view.
   await page.goto("/session/11369");
-  await expect(page.getByRole("navigation", { name: "Data mode" }).getByRole("link", { name: "Live" })).toHaveAttribute("href", "/live/11369");
+  await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Watch live" })).toHaveCount(0);
 });

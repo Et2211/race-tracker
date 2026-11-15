@@ -83,6 +83,7 @@ export function findStoppedCars(input: {
     let i = Math.max(0, floorIndex(times, windowStart - p.racingWindowMs));
     while (i < times.length && times[i] <= now) {
       if (speed[i] >= p.stopSpeed) {
+        if (times[i] > windowEnd) break; // moving past the window: nothing more to find
         i++;
         continue;
       }

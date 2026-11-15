@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { memo, useEffect, useId, useState } from "react";
 import { FIRST_YEAR, type Catalog } from "@/lib/session/catalog";
 
 /** "Sat 22 Nov, 04:00 UTC". UTC so the server and every viewer agree. */
@@ -12,7 +12,7 @@ const formatWhen = (iso: string) => {
 };
 
 /** Season, then Grand Prix, then session. Navigates to the chosen session. */
-export function SessionPicker({ label, current }: { label: string; current?: { year: number; meetingKey: number; sessionKey: number } }) {
+export const SessionPicker = memo(function SessionPicker({ label, current }: { label: string; current?: { year: number; meetingKey: number; sessionKey: number } }) {
   const router = useRouter();
   const id = useId();
   const [open, setOpen] = useState(!current);
@@ -100,4 +100,4 @@ export function SessionPicker({ label, current }: { label: string; current?: { y
       )}
     </div>
   );
-}
+});

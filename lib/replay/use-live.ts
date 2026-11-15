@@ -15,7 +15,8 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 const POLL_MS = 1000;
-const minuteOf = (ms: number) => Math.floor(ms / 60_000);
+/** Seconds of car data loaded on opening, and per step when scrolling back. */
+const OPEN_S = 120;
 
 /**
  * A session while it runs: the metadata so far, then every second the rows that changed since
@@ -43,6 +44,10 @@ export function useLiveSession(sessionKey: number, playhead: number | null) {
     let rev = 0;
     const poll = async () => {
       if (stopped) return;
+      if (document.hidden) {
+        timer = setTimeout(poll, POLL_MS);
+        return;
+      }
       let soon = false;
       try {
         const u = await getJson<{ rows: LiveRow[]; rev: number; more: boolean; status: LiveStatusView }>(`/api/live/${sessionKey}/updates?rev=${rev}`);
@@ -78,43 +83,74 @@ export function useLiveSession(sessionKey: number, playhead: number | null) {
     };
   }, [sessionKey, attempt]);
 
-  // Car data, a minute at a time: the newest minute (and the one before, until it is complete),
-  // and the playhead's minute when scrolled back.
+  // Car data, a second at a time. On opening: the last two minutes. Then every second, whatever
+  // was written or improved since the revision already read (new seconds, gaps filled later,
+  // partial seconds replaced). Scrolling back loads earlier seconds two minutes at a time.
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // Minutes whose data is complete: the feed had moved past them when they were fetched.
-    const done = new Set<number>();
+    let cursor: number | null = null;
+    let loadedFrom: number | null = null;
+    const add = (chunks: TelemetryChunk[]) => {
+      if (chunks.length === 0) return;
+      telemetry.addMany(chunks);
+      setVersion((v) => v + 1);
+    };
     const tick = async () => {
       if (stopped) return;
+      if (document.hidden) {
+        timer = setTimeout(tick, POLL_MS); // nothing to draw: wait until the tab is visible again
+        return;
+      }
       const s = statusRef.current;
-      if (s?.lastSecond !== null && s?.lastSecond !== undefined) {
-        const newest = minuteOf((s.lastSecond + 1) * 1000);
-        const wanted = new Set([newest, newest - 1]);
-        const p = playheadRef.current;
-        if (p !== null) for (const m of [minuteOf(p) - 1, minuteOf(p), minuteOf(p) + 1]) if (m <= newest) wanted.add(m);
-        for (const m of [...wanted].sort((a, b) => b - a)) {
-          if (done.has(m) || (s.firstSecond !== null && (m + 1) * 60 <= s.firstSecond)) continue;
-          try {
-            const chunk = await getJson<TelemetryChunk>(`/api/live/${sessionKey}/telemetry?minute=${m}`);
+      try {
+        if (cursor === null) {
+          if (s?.lastSecond !== null && s?.lastSecond !== undefined) {
+            const to = s.lastSecond + 1;
+            const from = Math.max(s.firstSecond ?? to - OPEN_S, to - OPEN_S);
+            const startRev = s.lastBucketRev; // anything written after this status arrives through the cursor
+            const r = await getJson<{ chunks: TelemetryChunk[] }>(`/api/live/${sessionKey}/telemetry?from=${from}&to=${to}`);
             if (stopped) return;
-            if (chunk.to > chunk.from) {
-              telemetry.add(chunk);
-              setVersion((v) => v + 1);
-            }
-            if (m < newest - 1 || chunk.to >= (m + 1) * 60_000) done.add(m);
-          } catch (e) {
-            setFailed(e instanceof Error ? e.message : String(e));
-            break;
+            add(r.chunks);
+            cursor = startRev;
+            loadedFrom = from;
+          }
+        } else {
+          for (let more = true; more && !stopped; ) {
+            const r: { chunks: TelemetryChunk[]; rev: number; more: boolean } = await getJson(`/api/live/${sessionKey}/telemetry?rev=${cursor}`);
+            if (stopped) return;
+            add(r.chunks);
+            cursor = r.rev;
+            more = r.more;
+          }
+          const p = playheadRef.current;
+          const first = s?.firstSecond ?? null;
+          if (p !== null && loadedFrom !== null && first !== null && loadedFrom > first && p < (loadedFrom + 60) * 1000) {
+            const to: number = loadedFrom;
+            const from = Math.max(first, to - OPEN_S);
+            const r = await getJson<{ chunks: TelemetryChunk[] }>(`/api/live/${sessionKey}/telemetry?from=${from}&to=${to}`);
+            if (stopped) return;
+            add(r.chunks);
+            loadedFrom = from;
           }
         }
+        setFailed(null);
+      } catch (e) {
+        setFailed(e instanceof Error ? e.message : String(e));
       }
       timer = setTimeout(tick, POLL_MS);
     };
+    const onVisible = () => {
+      if (document.hidden) return;
+      clearTimeout(timer);
+      timer = setTimeout(tick, 0);
+    };
+    document.addEventListener("visibilitychange", onVisible);
     timer = setTimeout(tick, 0);
     return () => {
       stopped = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [sessionKey, telemetry, attempt]);
 

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import { passingAid, type Battle, type TyreState } from "@/lib/timing/battles";
@@ -33,7 +34,7 @@ function strategyNote(b: Battle, name: (n: number) => string): string | null {
 }
 
 /** Who to watch right now, worked out from the gaps between cars at each crossing of the line. */
-export function WatchPanel({ view, year, watch, selected, onSelect }: { view: StaticView; year: number; watch: NonNullable<Snapshot["watch"]>; selected: number | null; onSelect: (driver: number) => void }) {
+export const WatchPanel = memo(function WatchPanel({ view, year, watch, selected, onSelect }: { view: StaticView; year: number; watch: NonNullable<Snapshot["watch"]>; selected: number | null; onSelect: (driver: number) => void }) {
   const who = (n: number) => {
     const d = view.drivers[n];
     return d ? `${d.name} #${n}` : `#${n}`;
@@ -79,4 +80,4 @@ export function WatchPanel({ view, year, watch, selected, onSelect }: { view: St
       <p className="note">Streams open in a new window: F1 TV and NOW block being shown inside other sites. Onboard cameras are on F1 TV; a replay here is not synced to their video.</p>
     </section>
   );
-}
+});

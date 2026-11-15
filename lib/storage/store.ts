@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { BUCKET, supabase, supabaseConfigured } from "./supabase";
@@ -14,6 +14,8 @@ export interface Store {
   /** Gzipped bytes, or null when the key does not exist. */
   getRaw(key: string): Promise<Buffer | null>;
   putRaw(key: string, gz: Buffer): Promise<void>;
+  /** Files directly under a folder (e.g. "sessions/11369"), names without the .gz suffix, with sizes. */
+  list(folder: string): Promise<{ name: string; bytes: number }[]>;
 }
 
 class DiskStore implements Store {
@@ -39,6 +41,13 @@ class DiskStore implements Store {
     await writeFile(`${target}.tmp`, gz);
     await rename(`${target}.tmp`, target);
   }
+  async list(folder: string) {
+    const dir = path.resolve(this.root, folder);
+    const names = await readdir(dir).catch(() => [] as string[]);
+    const out: { name: string; bytes: number }[] = [];
+    for (const n of names) if (n.endsWith(".gz")) out.push({ name: n.slice(0, -3), bytes: (await stat(path.join(dir, n))).size });
+    return out;
+  }
 }
 
 class SupabaseStore implements Store {
@@ -55,6 +64,11 @@ class SupabaseStore implements Store {
   async putRaw(key: string, gz: Buffer) {
     const { error } = await supabase().storage.from(BUCKET).upload(`${key}.gz`, gz, { contentType: "application/gzip", upsert: true });
     if (error) throw error;
+  }
+  async list(folder: string) {
+    const { data, error } = await supabase().storage.from(BUCKET).list(folder, { limit: 1000 });
+    if (error) throw error;
+    return data.filter((f) => f.name.endsWith(".gz")).map((f) => ({ name: f.name.slice(0, -3), bytes: Number((f.metadata as { size?: number } | null)?.size ?? 0) }));
   }
 }
 

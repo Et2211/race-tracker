@@ -32,18 +32,34 @@ export function decodeBucket(second: number, data: string): Bucket {
   };
 }
 
+/** A data type unseen for this long no longer holds back closing seconds (it may simply have gone quiet). */
+export const QUIET_MS = 10_000;
+
 /**
- * Collects samples into seconds. A relay only writes seconds it saw from start to end: the first
- * second after it subscribed may be partial, so it starts with the next one.
+ * Collects samples into seconds. A relay only writes seconds it saw from start to end: the later
+ * of the second after it subscribed and the second after its first sample. Seconds close once
+ * every data type still arriving has moved LATE_MS past them, so car data running ahead of
+ * positions cannot close a second that positions have not reached yet.
  */
 export class BucketCollector {
   private open = new Map<number, Bucket>();
-  private firstComplete: number | null = null;
+  private firstSample: number | null = null;
+  private subscribed: number | null = null;
+  private newest = new Map<"location" | "car_data", { sample: number; seenAt: number }>();
 
-  add(kind: "location" | "car_data", row: LocationRow | CarDataRow) {
-    const second = secondOf(row.date);
-    if (this.firstComplete === null) this.firstComplete = second + 1;
-    if (second < this.firstComplete) return;
+  /** The relay's subscription was confirmed at this wall-clock time. */
+  setSubscribed(ms: number) {
+    this.subscribed = Math.floor(ms / 1000) + 1;
+    for (const second of this.open.keys()) if (second < this.subscribed) this.open.delete(second);
+  }
+
+  add(kind: "location" | "car_data", row: LocationRow | CarDataRow, receivedAt = Date.now()) {
+    const ms = Date.parse(row.date);
+    const second = Math.floor(ms / 1000);
+    const n = this.newest.get(kind);
+    this.newest.set(kind, { sample: Math.max(n?.sample ?? 0, ms), seenAt: receivedAt });
+    if (this.firstSample === null) this.firstSample = second + 1;
+    if (second < this.start!) return;
     let b = this.open.get(second);
     if (!b) {
       b = { second, location: [], carData: [] };
@@ -53,11 +69,14 @@ export class BucketCollector {
     else b.carData.push(row as CarDataRow);
   }
 
-  /** Seconds that ended at least LATE_MS before `latest` (the newest sample time seen), oldest first. */
-  takeClosed(latest: number): Bucket[] {
+  /** Seconds every active data type has moved LATE_MS past, oldest first. */
+  takeClosed(now = Date.now()): Bucket[] {
+    const active = [...this.newest.values()].filter((n) => now - n.seenAt < QUIET_MS);
+    if (active.length === 0) return [];
+    const closeBefore = Math.min(...active.map((n) => n.sample)) - LATE_MS;
     const out: Bucket[] = [];
     for (const [second, b] of this.open) {
-      if ((second + 1) * 1000 + LATE_MS <= latest) {
+      if ((second + 1) * 1000 <= closeBefore) {
         out.push(b);
         this.open.delete(second);
       }
@@ -65,9 +84,15 @@ export class BucketCollector {
     return out.sort((a, b) => a.second - b.second);
   }
 
+  /** Seconds still open (for the end of a relay: put back nothing, the next relay has them). */
+  get pending(): number {
+    return this.open.size;
+  }
+
   /** The first second this collector holds completely, or null before any sample. */
   get start(): number | null {
-    return this.firstComplete;
+    if (this.firstSample === null) return null;
+    return Math.max(this.firstSample, this.subscribed ?? -Infinity);
   }
 }
 

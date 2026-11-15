@@ -75,7 +75,6 @@ export type Snapshot = {
   flags: FlagView[];
   safetyCar: { kind: "SC" | "VSC"; ending: boolean } | null;
   red: boolean;
-  cars: CarDot[];
   /** Cars that have retired from the race and stopped for good; they are not drawn. */
   retired: number[];
   /** Telemetry for this moment has been downloaded. */

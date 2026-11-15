@@ -55,7 +55,10 @@ export async function openf1<T>(endpoint: string, params: Params = {}, attempts 
         throw new Error(`OpenF1 ${res.status} for ${endpoint}`);
       }
       const retryAfter = Number(res.headers.get("retry-after"));
-      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 3000 * 2 ** attempt);
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 3000 * 2 ** attempt;
+      // Hold back every other request from this instance too, not just this one.
+      if (res.status === 429) nextSlot = Math.max(nextSlot, Date.now() + wait);
+      await sleep(wait);
       continue;
     }
     if (!res.ok) throw new Error(`OpenF1 ${res.status} for ${endpoint}: ${(await res.text()).slice(0, 200)}`);

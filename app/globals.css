@@ -87,17 +87,36 @@ a:focus-visible {
 .note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
 .inset { background: var(--inset); border-radius: 8px; padding: 12px 14px; }
 
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; }
+.toolbar { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.toolbar-spacer { flex: 1 1 0; }
+.toolbar-note { font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.clock-label { font-size: 14px; color: var(--muted); white-space: nowrap; }
+.clock-label strong { color: var(--text); font-weight: 600; }
+.scrubber { width: 100%; accent-color: var(--red); height: 28px; margin: 0; cursor: pointer; }
+.control { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.control.check { min-height: 44px; cursor: pointer; }
+.control.check input { width: 18px; height: 18px; accent-color: var(--red); margin: 0; }
+.session-clock { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.session-clock.on { border-color: var(--green); }
+.session-clock.stopped { border-color: var(--red); color: var(--red-text); }
 .picker { min-height: 44px; background: var(--inset); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: 600 15px var(--sans); padding: 0 12px; cursor: pointer; max-width: 100%; }
-.segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
-.seg { min-height: 44px; padding: 0 16px; background: transparent; border: 0; color: var(--text); font: 600 14px var(--sans); cursor: pointer; }
-.seg[aria-pressed="true"] { background: var(--text); color: var(--bg); }
-.tab { min-height: 44px; padding: 0 18px; background: transparent; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: 600 15px var(--sans); cursor: pointer; }
-.tab[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
-.scrub { display: flex; align-items: center; gap: 12px; flex: 1 1 260px; min-width: 0; }
-.scrub label { font-size: 14px; color: var(--muted); white-space: nowrap; }
-.scrub label strong { color: var(--text); font-weight: 600; }
-.scrub input { flex: 1; min-width: 120px; accent-color: var(--red); height: 44px; margin: 0; }
+/* Controls. One box model for buttons, links and plain text, so a control looks and lines up the
+   same whatever element it is; "selected" is aria-pressed (toggles) or aria-current (links). */
+.seg, .tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+  min-height: 44px; margin: 0; font: 600 14px/1.2 var(--sans); color: var(--text); background: transparent;
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.seg { padding: 0 14px; border: 0; }
+.seg.small { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.tab { padding: 0 18px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 15px; }
+.seg[aria-pressed="true"], .seg[aria-current="page"] { background: var(--text); color: var(--bg); }
+.tab[aria-pressed="true"], .tab[aria-current="page"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.seg:hover:not([aria-pressed="true"]):not([aria-current="page"]), .tab:hover:not([aria-pressed="true"]) { background: var(--inset); }
+.seg:focus-visible, .tab:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.segmented > .seg + .seg { border-left: 1px solid var(--border); }
 .live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); display: inline-block; }
 
 .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch; }
@@ -212,8 +231,10 @@ a:focus-visible {
 .calendar { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .round { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .round.next { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; }
-.round.cancelled { opacity: 0.55; }
-.round.cancelled .round-name { text-decoration: line-through; }
+/* Cancelled rounds: struck through and quieter, but text keeps its normal contrast. */
+.round.cancelled { background: transparent; border-style: dashed; }
+.round.cancelled .round-name { text-decoration: line-through; color: var(--muted); }
+.round.cancelled .round-track path { stroke: var(--border-strong); }
 .round-head { display: flex; justify-content: space-between; align-items: baseline; }
 .round-no { font-family: var(--cond); font-weight: 700; font-size: 18px; color: var(--red-text); }
 .round-name { font-family: var(--cond); font-weight: 600; font-size: 20px; line-height: 1.1; }
@@ -223,8 +244,10 @@ a:focus-visible {
 .round-track.placeholder { border: 1px dashed var(--border); border-radius: 8px; }
 .round-winner { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .round-winner strong { color: var(--text); font-family: var(--cond); font-size: 16px; }
-.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-.chart-wrap { position: relative; }
+.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
+/* On a phone the chart keeps a readable size and scrolls sideways inside its panel. */
+.chart-wrap { position: relative; overflow-x: auto; }
+.chart-wrap > svg { min-width: 560px; }
 .tooltip { position: absolute; top: 8px; transform: translateX(-50%); background: var(--inset); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; min-width: 130px; pointer-events: none; font-size: 13px; }
 .tooltip-row { display: flex; align-items: center; gap: 6px; font-family: var(--cond); font-weight: 700; font-size: 15px; }
 .gauge { height: 10px; background: var(--inset); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
@@ -289,10 +312,16 @@ a:focus-visible {
 .log .when-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* --- Live ---------------------------------------------------------------- */
-.seg[aria-current="page"] { background: var(--text); color: var(--bg); }
-a.seg { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
 .live-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
 .live-status.warn .live-dot { background: var(--yellow); animation: none; }
 .live-status.off .live-dot { background: var(--muted); animation: none; }
 .live-pill { display: inline-flex; align-items: center; gap: 6px; border-color: var(--red); }
 .live-chip { border-color: var(--red); }
+.watch-live { text-decoration: none; color: var(--text); background: rgba(225, 6, 0, 0.12); }
+.watch-live:hover { background: rgba(225, 6, 0, 0.25); }
+
+/* The page's main landmark: a real block (display: contents can drop the landmark in some browsers). */
+.page-main { display: flex; flex-direction: column; gap: inherit; }
+.chart-table summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 32px; display: inline-flex; align-items: center; }
+.chart-table summary:hover { color: var(--text); }
+.chart-table .scroll { margin-top: 8px; max-height: none; }

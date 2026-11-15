@@ -8,7 +8,7 @@ import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { PICKER_SESSIONS, SETTLE_MS, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
-import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey } from "./ingest";
+import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, storedSessionMeta } from "./ingest";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 /** "fixtures" serves only the recorded sessions and never touches the network. */
@@ -41,14 +41,14 @@ function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], so
   };
 }
 
-export async function getCatalog(year: number): Promise<Catalog> {
+export async function getCatalog(year: number, downloadedSet?: Set<number>): Promise<Catalog> {
   if (dataMode() === "fixtures") {
     const sessions = (await fixtureSessions()).filter((s) => s.year === year);
     return withStatus(buildCatalog(year, (await fixtureMeetings()).filter((m) => m.year === year), sessions, "fixtures"), () => true);
   }
   const catalog = await cachedCatalog(year);
   // What is downloaded, started or final changes all the time, so it is worked out per request.
-  const downloaded = await sessionIndex().complete();
+  const downloaded = downloadedSet ?? (await sessionIndex().complete());
   return withStatus(catalog, (key) => downloaded.has(key));
 }
 
@@ -68,12 +68,19 @@ async function cachedCatalog(year: number): Promise<Catalog> {
   // v3: lists sessions that have not started yet, and cancelled rounds.
   const key = `catalog/v3/${year}.json`;
   const cached = await readJson<Catalog>(key);
-  const finishedYear = year < new Date().getUTCFullYear();
-  if (cached && (finishedYear || Date.now() - Date.parse(cached.fetchedAt) < CURRENT_YEAR_TTL_MS)) return cached;
-  const [meetings, sessions] = await Promise.all([openf1<Meeting>("meetings", { year }), openf1<Session>("sessions", { year })]);
-  const catalog = buildCatalog(year, meetings, sessions, "openf1");
-  await writeJson(key, catalog);
-  return catalog;
+  // A season's list is final only if it was fetched after the season ended (late changes included).
+  const final = cached !== null && Date.parse(cached.fetchedAt) >= Date.UTC(year + 1, 0, 1);
+  if (cached && (final || Date.now() - Date.parse(cached.fetchedAt) < CURRENT_YEAR_TTL_MS)) return cached;
+  try {
+    const [meetings, sessions] = await Promise.all([openf1<Meeting>("meetings", { year }), openf1<Session>("sessions", { year })]);
+    const catalog = buildCatalog(year, meetings, sessions, "openf1");
+    await writeJson(key, catalog);
+    return catalog;
+  } catch (e) {
+    // OpenF1 down or rate-limiting: an older list is better than none (it is refreshed next time).
+    if (cached) return cached;
+    throw e;
+  }
 }
 
 async function fixtureExtras(sessionKey: number) {
@@ -125,7 +132,7 @@ export async function ensureChunk(sessionKey: number, index: number): Promise<Te
     if (!raw) throw new Error(`No recorded window ${index} for session ${sessionKey}`);
     return JSON.parse(gunzipSync(raw).toString("utf8")) as TelemetryChunk;
   }
-  const meta = await readJson<SessionMeta>(metaKey(sessionKey));
+  const meta = await storedSessionMeta(sessionKey);
   if (!meta) throw new Error("Load the session's metadata first");
   return ingestWindow(meta, index);
 }

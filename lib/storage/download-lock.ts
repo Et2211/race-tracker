@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 export type LockBackend = {
   claim(key: string, holder: string, ttlSeconds: number): Promise<boolean>;
   release(key: string, holder: string): Promise<void>;
+  /** Keep the lock for another ttlSeconds; false if it was lost (expired and taken). */
+  extend(key: string, holder: string, ttlSeconds: number): Promise<boolean>;
   running(key: string): Promise<boolean>;
 };
 
@@ -16,7 +18,7 @@ export class DownloadBusyError extends Error {}
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type LockOptions = {
-  /** How long the lock lasts if its holder never releases it. */
+  /** How long the lock lasts without a heartbeat; the holder renews it every third of this while it works. */
   ttlSeconds: number;
   /** How long a second request waits for someone else's download before giving up. */
   waitMs: number;
@@ -41,9 +43,11 @@ export async function withDownloadLock<T>(
     const stored = await read();
     if (stored) return stored;
     if (await backend.claim(key, holder, ttlSeconds)) {
+      const heartbeat = setInterval(() => void backend.extend(key, holder, ttlSeconds).catch(() => false), (ttlSeconds * 1000) / 3);
       try {
         return await download();
       } finally {
+        clearInterval(heartbeat);
         await backend.release(key, holder).catch(() => undefined); // it expires anyway
       }
     }
@@ -58,5 +62,6 @@ export async function withDownloadLock<T>(
 export const noLocks: LockBackend = {
   claim: async () => true,
   release: async () => undefined,
+  extend: async () => true,
   running: async () => false,
 };
