@@ -72,6 +72,7 @@ Needs OpenF1's paid tier. Nothing here costs anything until `OPENF1_USERNAME` / 
 - **Browser.** `/live/<session key>` loads the session so far, then polls `/api/live/<key>/updates` and the newest minute of car data every second. The clock shows real time minus a delay and never runs past the newest data; **Sync to video** sets the delay from a moment you press on your stream (NOW, F1 TV), pausing freezes it, and the scrubber goes back over anything received. The OpenF1 token never leaves the server.
 - **During a session there is no classification yet**, so retirements and the official result appear once OpenF1 publishes them; the map is drawn on the newest stored session at the circuit.
 - **Afterwards** the session is downloaded the normal way about three hours after the end; `live_clear()` removes its live rows.
+- **Practice (FP1–FP3)** is followed live like any session (relays start for it), but **never stored**: the calendar marks it `live_only`, so the download job skips it, and its live rows are removed an hour after it ends (`live_clear_finished()`, hourly). Opening a past practice session builds it from OpenF1 on the fly (about 30 s; ~25 requests) and sends it straight to the browser, with nothing written to Supabase; the browser and Vercel's CDN cache what was sent.
 
 **On the day you subscribe:** add the credentials to `.env.local` and Vercel, run `npm run live:check` during a session, and run the `race-tracker-live-relay` job from `supabase/cron.sql` if it is not scheduled yet.
 

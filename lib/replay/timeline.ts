@@ -1,4 +1,5 @@
 import type { Lap, RaceControl } from "@/lib/openf1/types";
+import type { SessionKind } from "@/lib/session/types";
 import { phaseStarts, type Phase } from "@/lib/timing/qualifying";
 
 /** Start of each race lap: the moment the first car began it (the leader crossing the line). */
@@ -16,7 +17,8 @@ export function lapStarts(laps: Lap[]): Map<number, number> {
 export type JumpTarget = { label: string; t: number };
 
 /** Places the replay can jump to: each lap of a race, or the start of each qualifying phase. */
-export function jumpTargets(kind: "race" | "qualifying" | "other", laps: Lap[], raceControl: RaceControl[], sessionName: string): JumpTarget[] {
+export function jumpTargets(kind: SessionKind, laps: Lap[], raceControl: RaceControl[], sessionName: string): JumpTarget[] {
+  if (kind === "practice") return []; // laps are each driver's own runs: nothing session-wide to jump to
   if (kind === "qualifying") {
     const prefix = sessionName.startsWith("Sprint") ? "SQ" : "Q";
     const starts = phaseStarts(raceControl);

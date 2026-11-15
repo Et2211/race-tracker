@@ -5,11 +5,12 @@ import type { MarshalSectors } from "@/lib/track/markers";
 /** Bump when SessionMeta or TelemetryChunk changes shape; it is part of the URLs the browser caches. */
 export const DATA_FORMAT = 3;
 
-export type SessionKind = "race" | "qualifying" | "other";
+export type SessionKind = "race" | "qualifying" | "practice" | "other";
 
 export function sessionKind(session: Pick<Session, "session_type" | "session_name">): SessionKind {
   if (session.session_type === "Race") return "race"; // includes "Sprint"
   if (session.session_type === "Qualifying") return "qualifying"; // includes "Sprint Qualifying"
+  if (session.session_type === "Practice") return "practice"; // followed live only, never stored
   return "other";
 }
 

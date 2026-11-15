@@ -80,7 +80,8 @@ type SeasonSnapshot = {
   basis: { races: number[]; lastScored: number | null };
 };
 
-const snapshotKey = (year: number) => `home/v1/${year}.json`;
+// v2: meetings list practice sessions (live only).
+const snapshotKey = (year: number) => `home/v2/${year}.json`;
 const STALE_MS = 6 * 60 * 60_000;
 
 async function buildSeason(catalog: Catalog): Promise<SeasonSnapshot> {

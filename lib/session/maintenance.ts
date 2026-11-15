@@ -36,9 +36,9 @@ export async function fillStandings(year: number): Promise<number> {
   return filled;
 }
 
-/** Live rows of sessions that have since been stored in full, however that happened. */
+/** Live rows no longer needed: sessions since stored in full, and practice (live only) that ended over an hour ago. */
 export async function clearDownloadedLive(): Promise<number> {
-  const { data, error } = await supabase().rpc("live_clear_downloaded");
+  const { data, error } = await supabase().rpc("live_clear_finished");
   if (error) throw error;
   return Number(data ?? 0);
 }

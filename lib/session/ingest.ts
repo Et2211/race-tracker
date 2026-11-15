@@ -13,7 +13,7 @@ import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type L
 import { SETTLE_MS } from "./catalog";
 import { circuitShape, summarize, type CircuitShape } from "./summary";
 import { encodeChunk } from "./telemetry";
-import type { SessionMeta, TelemetryChunk } from "./types";
+import { sessionKind, type SessionMeta, type TelemetryChunk } from "./types";
 
 export const metaKey = (sessionKey: number) => `sessions/${sessionKey}/meta.json`;
 export const summaryKey = (sessionKey: number) => `sessions/${sessionKey}/summary.json`;
@@ -52,6 +52,16 @@ export function storedSessionMeta(sessionKey: number): Promise<SessionMeta | nul
 
 
 export class NotReadyError extends Error {}
+/**
+ * Practice is never stored (owner's decision): opening one builds it from OpenF1 and sends it
+ * straight to the browser. The metadata is kept here for 10 minutes so its telemetry windows,
+ * requested one after another, do not rebuild it each time.
+ */
+const practiceMemo = new Map<number, { at: number; meta: SessionMeta }>();
+export function rememberedPractice(sessionKey: number): SessionMeta | null {
+  const hit = practiceMemo.get(sessionKey);
+  return hit && Date.now() - hit.at < 10 * 60_000 ? hit.meta : null;
+}
 
 /** Learned marshal-sector positions: the Supabase table when configured, else data/marshal-sectors. */
 export async function learnedSectors(circuitKey: number): Promise<LearnedSectors | null> {
@@ -130,6 +140,8 @@ function once<T>(key: string, work: () => Promise<T>): Promise<T> {
 
 /** Step 1 of ingesting: everything except car telemetry, about 15 OpenF1 requests. */
 export function ingestMeta(sessionKey: number): Promise<SessionMeta> {
+  const practice = rememberedPractice(sessionKey);
+  if (practice) return Promise.resolve(practice);
   const key = `meta:${sessionKey}`;
   // A metadata download takes about a minute. The lock is renewed while it runs, so a crashed
   // holder is noticed within a minute; a waiter gives up after 150 s, leaving time for a full
@@ -146,12 +158,14 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
 
   const [session] = await openf1<Session>("sessions", { session_key: sessionKey });
   if (!session) throw new Error(`OpenF1 has no session ${sessionKey}`);
+  // Practice is built and sent, never stored: no space reserved, nothing written or counted.
+  const keep = sessionKind(session) !== "practice";
   if (Date.parse(session.date_end) + SETTLE_MS > Date.now()) {
     throw new NotReadyError("This session ended less than three hours ago. OpenF1 is still adding results; try again later.");
   }
   // Check the storage cap before spending any more requests; size estimated from the schedule.
   const [meeting] = await openf1<Meeting>("meetings", { meeting_key: session.meeting_key });
-  await sessionIndex().reserve({
+  if (keep) await sessionIndex().reserve({
     sessionKey,
     year: session.year,
     meetingName: meeting?.meeting_name ?? session.circuit_short_name,
@@ -211,6 +225,10 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     qualifying,
     source: "openf1",
   });
+  if (!keep) {
+    practiceMemo.set(sessionKey, { at: Date.now(), meta });
+    return meta;
+  }
   const bytes = await writeJson(metaKey(sessionKey), meta);
   await sessionIndex().setWindows(sessionKey, meta.windows.length);
   await sessionIndex().added(sessionKey, bytes + (await writeDerived(meta)), false);
@@ -241,13 +259,15 @@ export function ingestWindow(meta: SessionMeta, index: number): Promise<Telemetr
 
 async function downloadWindow(meta: SessionMeta, index: number): Promise<TelemetryChunk> {
   const key = chunkKey(meta.session.session_key, index);
-  const existing = await readJson<TelemetryChunk>(key);
+  const keep = meta.kind !== "practice"; // practice: fetched and sent, never stored
+  const existing = keep ? await readJson<TelemetryChunk>(key) : null;
   if (existing) return existing;
   const w = meta.windows[index];
   if (!w) throw new Error(`No window ${index}`);
   const location = await fetchRange<LocationRow>("location", meta.session.session_key, w.from, w.to);
   const carData = await fetchRange<CarDataRow>("car_data", meta.session.session_key, w.from, w.to);
   const chunk = encodeChunk(index, w.from, w.to, location, carData);
+  if (!keep) return chunk;
   const bytes = await writeJson(key, chunk);
   await sessionIndex().added(meta.session.session_key, bytes, true);
   return chunk;

@@ -187,10 +187,11 @@ function flagView(meta: SessionMeta, view: StaticView, telemetry: TelemetryIndex
 }
 
 function qualifyingView(meta: SessionMeta, t: number): QualifyingView | null {
-  if (meta.kind === "qualifying") {
+  if (meta.kind === "qualifying" || meta.kind === "practice") {
     const laps = meta.laps.filter((l) => lapEnd(l) <= t);
     const rc = meta.raceControl.filter((r) => Date.parse(r.date) <= t);
-    const { phases, ideal } = buildQualifying(laps, rc);
+    // Practice: one table of best laps over the whole session.
+    const { phases, ideal } = buildQualifying(laps, rc, meta.kind === "practice" ? { singlePhaseFrom: runningStart(meta) } : {});
     return { sessionName: meta.session.session_name, phases, ideal, current: phases.at(-1)?.phase ?? null, final: false };
   }
   if (meta.qualifying) {

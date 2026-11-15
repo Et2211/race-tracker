@@ -91,8 +91,12 @@ function phaseOf(t: number, starts: Partial<Record<Phase, number>>): Phase | nul
   return phase;
 }
 
-export function buildQualifying(laps: Lap[], raceControl: RaceControl[]): { phases: QualifyingPhase[]; ideal: IdealLap | null } {
-  const starts = phaseStarts(raceControl);
+/**
+ * Best laps per driver in each qualifying phase. `singlePhaseFrom` treats the whole session as one
+ * phase starting then: practice, which has no phases or eliminations.
+ */
+export function buildQualifying(laps: Lap[], raceControl: RaceControl[], { singlePhaseFrom }: { singlePhaseFrom?: number } = {}): { phases: QualifyingPhase[]; ideal: IdealLap | null } {
+  const starts: Partial<Record<Phase, number>> = singlePhaseFrom !== undefined ? { 1: singlePhaseFrom } : phaseStarts(raceControl);
   const deleted = deletedLaps(raceControl);
   const valid = laps.filter(isTimed).filter((lap) => !lap.is_pit_out_lap && !isDeleted(lap, deleted));
 

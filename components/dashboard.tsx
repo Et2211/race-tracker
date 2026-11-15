@@ -157,7 +157,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
   const pickerCurrent = useMemo(() => ({ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }), [year, meta.meeting.meeting_key, meta.session.session_key]);
   const qClock = meta.kind === "qualifying" ? qualifyingClock(meta.raceControl, slowT, prefix === "SQ", year) : null;
   // Screen readers hear the position when it changes meaningfully, not every second of playback.
-  const scrubText = `${meta.kind === "race" ? (snapshot.beforeStart ? "before the start" : `lap ${snapshot.lap}`) : (currentTarget?.label ?? "before the start")}, ${formatClock(Math.floor(slowT / 10_000) * 10_000)} UTC`;
+  const scrubText = `${meta.kind === "race" ? (snapshot.beforeStart ? "before the start" : `lap ${snapshot.lap}`) : meta.kind === "practice" ? meta.session.session_name : (currentTarget?.label ?? "before the start")}, ${formatClock(Math.floor(slowT / 10_000) * 10_000)} UTC`;
 
   return (
     <div className="page">
@@ -220,7 +220,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
                 <button key={x.label} className="seg" aria-pressed={currentTarget?.label === x.label} onClick={() => seek(x.t - PHASE_LEAD_MS)}>{x.label}</button>
               ))}
             </div>
-          ) : (
+          ) : targets.length === 0 ? null : (
             <label className="control">
               <span className="muted">Jump to</span>
               <select className="picker" value="" onChange={(e) => e.target.value && seek(Number(e.target.value))}>
@@ -238,7 +238,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           <span className="toolbar-spacer" />
           <span className="clock-label" aria-hidden="true">
             {isLive ? "Live " : "Replay "}
-            {meta.kind === "race" ? (!snapshot.beforeStart ? <>lap <strong>{snapshot.lap}</strong></> : <strong>before the start</strong>) : <strong>{currentTarget?.label ?? "before the start"}</strong>}
+            {meta.kind === "race" ? (!snapshot.beforeStart ? <>lap <strong>{snapshot.lap}</strong></> : <strong>before the start</strong>) : meta.kind === "practice" ? <strong>{meta.session.session_name}</strong> : <strong>{currentTarget?.label ?? "before the start"}</strong>}
             <span className="muted"> · {formatClock(t)} UTC</span>
           </span>
         </div>
@@ -314,16 +314,19 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
             <div>
               <h2>{qualifying.sessionName} · sector times</h2>
               <p className="lede">
-                {qualifying.final ? "Final result of the session that set the grid. " : "Laps completed so far. "}
-                Best valid lap per driver in the selected phase; laps deleted by race control are left out.
+                {meta.kind === "practice"
+                  ? "Best valid lap per driver so far; laps deleted by race control are left out."
+                  : <>{qualifying.final ? "Final result of the session that set the grid. " : "Laps completed so far. "}Best valid lap per driver in the selected phase; laps deleted by race control are left out.</>}
               </p>
             </div>
-            <div role="group" aria-label="Qualifying phase" style={{ display: "flex", gap: 8 }}>
-              {qualifying.phases.map((p) => (
-                <button key={p.phase} className="tab" aria-pressed={p.phase === phase} onClick={() => setPhaseChoice(p.phase)}>{prefix}{p.phase}</button>
-              ))}
-            </div>
-            {qPhase ? <QualifyingTable view={view} phase={qPhase} t={snapshot.t} selected={selected} onSelect={select} /> : <p className="note">No timed laps in this phase yet.</p>}
+            {meta.kind !== "practice" && (
+              <div role="group" aria-label="Qualifying phase" style={{ display: "flex", gap: 8 }}>
+                {qualifying.phases.map((p) => (
+                  <button key={p.phase} className="tab" aria-pressed={p.phase === phase} onClick={() => setPhaseChoice(p.phase)}>{prefix}{p.phase}</button>
+                ))}
+              </div>
+            )}
+            {qPhase ? <QualifyingTable view={view} phase={qPhase} t={snapshot.t} selected={selected} onSelect={select} title={meta.kind === "practice" ? `${meta.session.session_name} best laps` : undefined} /> : <p className="note">No timed laps yet.</p>}
             <div className="cutline">
               {qPhase?.cutAfter && <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><i />Drivers below the dashed line are eliminated</span>}
               <MarkLegend />

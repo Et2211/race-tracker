@@ -2,7 +2,7 @@ import "server-only";
 import { openf1 } from "@/lib/openf1/client";
 import type { Meeting, Session } from "@/lib/openf1/types";
 import { supabase } from "@/lib/storage/supabase";
-import { PICKER_SESSIONS } from "./catalog";
+import { isPractice, PICKER_SESSIONS } from "./catalog";
 
 /**
  * The published session calendar in Supabase (`session_calendar`). A database job checks it every
@@ -14,7 +14,7 @@ export async function refreshCalendar(year: number): Promise<number> {
   const [meetings, sessions] = await Promise.all([openf1<Meeting>("meetings", { year }), openf1<Session>("sessions", { year })]);
   const meetingFor = new Map(meetings.map((m) => [m.meeting_key, m]));
   const rows = sessions
-    .filter((s) => PICKER_SESSIONS.includes(s.session_name) && !/testing/i.test(meetingFor.get(s.meeting_key)?.meeting_name ?? ""))
+    .filter((s) => (PICKER_SESSIONS.includes(s.session_name) || isPractice(s)) && !/testing/i.test(meetingFor.get(s.meeting_key)?.meeting_name ?? ""))
     .map((s) => ({
       session_key: s.session_key,
       year: s.year,
@@ -25,6 +25,8 @@ export async function refreshCalendar(year: number): Promise<number> {
       date_start: s.date_start,
       date_end: s.date_end,
       is_cancelled: Boolean(s.is_cancelled || meetingFor.get(s.meeting_key)?.is_cancelled),
+      // Practice: relays start for it, downloads never do.
+      live_only: isPractice(s),
       updated_at: new Date().toISOString(),
     }));
   if (!rows.length) return 0;

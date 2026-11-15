@@ -221,3 +221,12 @@ Four review agents (live mode; data and storage; replay performance; homepage an
 **Not done**: metadata is still unzipped per request to apply learned marshal sectors (now behind the CDN cache); reviewer extras not on the list (24 h results refresh, a shared rate-limit row, Float32 telemetry). Whether `after()` keeps a relay alive for 150 s on Vercel needs a preview deploy to prove.
 
 Checks: 97 unit tests, 37 end-to-end runs, `test:live` (memory and Supabase), lint and typecheck clean.
+
+## Practice sessions: live, and replays streamed but never stored (2026-11-15)
+
+- Owner's decision: practice is not worth storing. Migration `20261115220000_practice_live_only.sql` (applied): `session_calendar.live_only` (set for practice by the calendar job), `due_sessions()` skips it, `live_clear_finished()` clears live rows of sessions since downloaded and of practice an hour after it ends (cron `race-tracker-live-cleanup`, hourly, in `cron.sql`).
+- A new `practice` session kind: the dashboard shows one table of best laps over the whole session (qualifying's table as a single phase, no eliminations), a sync point at the pit exit opening, and no lap jumps.
+- Opening a past practice session builds it from OpenF1 and sends it without storing anything (metadata kept in memory for 10 minutes for its windows). Checked: São Paulo FP1 (11405) loaded in 10 s (570 laps, 6 windows), its first window in 7 s, and Supabase afterwards had no row, file or lock for it. The picker and calendar list practice ("loads from OpenF1, about 30 s"); the homepage hero and calendar link to the live page while one runs.
+- Las Vegas: FP1 11413 (Fri 20 Nov 00:30 UTC), FP2 11414 (04:00), FP3 11415 (Sat 21 Nov 00:30). With practice in the calendar, relays start for them automatically: FP1 is a hands-off dry run of the full live path.
+- End-to-end tests now run with no OpenF1 account or Supabase whatever `.env.local` holds.
+- Checks: 101 unit tests, 37 end-to-end runs (Node 26), `test:live`, lint and typecheck clean.

@@ -56,3 +56,10 @@ $$);
 -- Already scheduled the calendar job with the 60 s timeout? Update it in place:
 --   select cron.alter_job((select jobid from cron.job where jobname = 'race-tracker-calendar'),
 --     command := $cmd$ ...the calendar job above... $cmd$);
+
+-- Live data that is no longer needed: sessions since downloaded in full, and practice (live only,
+-- never stored) an hour after it ends. Runs in the database; no call to the app.
+-- (Needs migration 20261115220000_practice_live_only.sql.)
+select cron.schedule('race-tracker-live-cleanup', '5 * * * *', $$
+  select public.live_clear_finished();
+$$);

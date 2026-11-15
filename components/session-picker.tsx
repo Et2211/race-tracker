@@ -56,7 +56,8 @@ export const SessionPicker = memo(function SessionPicker({ label, current }: { l
   }, [year, open, catalogs]);
 
   const meeting = catalog?.meetings.find((m) => m.meetingKey === meetingKey) ?? null;
-  const session = meeting?.sessions.find((s) => s.sessionKey === sessionKey) ?? null;
+  const sessions = meeting?.sessions ?? [];
+  const session = sessions.find((s) => s.sessionKey === sessionKey) ?? null;
 
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -78,16 +79,18 @@ export const SessionPicker = memo(function SessionPicker({ label, current }: { l
           <label className="sr-only" htmlFor={`${id}-session`}>Session</label>
           <select id={`${id}-session`} className="picker" value={sessionKey ?? ""} disabled={!meeting} onChange={(e) => setSessionKey(Number(e.target.value))}>
             <option value="" disabled>Session</option>
-            {meeting?.sessions.map((s) => (
+            {sessions.map((s) => (
               <option key={s.sessionKey} value={s.sessionKey} disabled={!s.available}>
                 {s.name}
                 {s.upcoming
                   ? ` · not run yet, ${formatWhen(s.dateStart)}`
                   : !s.available
                     ? " · results not final yet"
-                    : s.downloaded
-                      ? " · downloaded"
-                      : " · downloads in about 1½ min"}
+                    : s.notStored
+                      ? " · loads from OpenF1, about 30 s"
+                      : s.downloaded
+                        ? " · downloaded"
+                        : " · downloads in about 1½ min"}
               </option>
             ))}
           </select>

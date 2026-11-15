@@ -46,13 +46,14 @@ function DriverCell({ view, driver, selected, onSelect, showName, tag }: Select 
   );
 }
 
-export const QualifyingTable = memo(function QualifyingTable({ view, phase, t, selected, onSelect }: Select & { view: StaticView; phase: QualifyingPhase; t: number }) {
+export const QualifyingTable = memo(function QualifyingTable({ view, phase, t, selected, onSelect, title }: Select & { view: StaticView; phase: QualifyingPhase; t: number; title?: string }) {
   const body = useRef<HTMLTableSectionElement>(null);
   useRowFlip(body, `${phase.phase}:${phase.rows.map((r) => r.driver).join(",")}:${phase.noTime.join(",")}`, t);
+  const name = title ?? `Qualifying sector times, Q${phase.phase}`;
   return (
-    <div className="scroll" tabIndex={0} role="region" aria-label={`Qualifying sector times, Q${phase.phase}`}>
+    <div className="scroll" tabIndex={0} role="region" aria-label={name}>
       <table className="timing quali">
-        <caption className="sr-only">Qualifying sector times, Q{phase.phase}</caption>
+        <caption className="sr-only">{name}</caption>
         <thead>
           <tr>
             <th scope="col" className="left">P</th>

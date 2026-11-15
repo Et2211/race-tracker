@@ -20,6 +20,7 @@ export default defineConfig({
     command: `rm -rf .cache/e2e-store && next start -p ${PORT}`,
     url: `http://localhost:${PORT}/api/catalog`,
     reuseExistingServer: false,
-    env: { F1_DATA_MODE: "fixtures", STORE_DIR: ".cache/e2e-store" },
+    // No OpenF1 account and no Supabase, whatever .env.local holds: tests use recorded data only.
+    env: { F1_DATA_MODE: "fixtures", STORE_DIR: ".cache/e2e-store", OPENF1_USERNAME: "", OPENF1_PASSWORD: "", SUPABASE_URL: "", SUPABASE_SECRET_KEY: "" },
   },
 });
