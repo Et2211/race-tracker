@@ -1,3 +1,4 @@
+import { battlesAt } from "@/lib/timing/battles";
 import { flagStateAt, logAt, logTone, STALE_AFTER_MS, type FlagGroup } from "@/lib/flags/state";
 import { incidentsNear, namedIncidents, type NamedIncident } from "@/lib/incident/messages";
 import { DETECTOR, findStoppedCars } from "@/lib/incident/stopped";
@@ -224,6 +225,15 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
   }
 
   const start = runningStart(meta);
+  let watch: Snapshot["watch"] = null;
+  if (race && t >= start && !finished) {
+    const note = state.red
+      ? "Red flag: the race is stopped."
+      : state.safetyCar
+        ? `${state.safetyCar.kind === "VSC" ? "Virtual safety car" : "Safety car"}: gaps are frozen or bunched up until the restart.`
+        : null;
+    watch = { battles: note ? [] : battlesAt(meta.laps, race.map((r) => r.driver), t), note };
+  }
   return {
     t,
     time: formatClock(t),
@@ -241,6 +251,7 @@ export function buildSnapshot(meta: SessionMeta, view: StaticView, telemetry: Te
     classification: finished && race && meta.results.length ? classificationDifferences(race, meta.results) : null,
     leader: race?.[0]?.driver ?? null,
     trend,
+    watch,
     qualifying: qualifyingView(meta, t),
     log: logAt(meta.raceControl, t, 6).map((row) => ({
       lap: isRace && Date.parse(row.date) >= start ? row.lap_number : null,

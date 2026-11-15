@@ -13,7 +13,8 @@
     "backtest": "tsx scripts/backtest.mts",
     "ingest": "tsx scripts/ingest.mts",
     "test:e2e": "next build && playwright test",
-    "store:upload": "tsx scripts/store-upload.mts"
+    "store:upload": "tsx scripts/store-upload.mts",
+    "backfill": "tsx --tsconfig scripts/tsconfig.json scripts/backfill.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

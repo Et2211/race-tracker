@@ -1,0 +1,7 @@
+{
+  // Scripts run outside Next.js, which normally provides the `server-only` guard; here it is empty.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": { "@/*": ["../*"], "server-only": ["./server-only.ts"] }
+  }
+}

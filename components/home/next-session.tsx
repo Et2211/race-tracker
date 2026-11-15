@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { HomeData } from "@/lib/home/data";
 import { SHAPE_VIEWBOX } from "@/lib/session/summary";
 import { useNow } from "./use-now";
@@ -47,13 +46,16 @@ export function NextSession({ next }: { next: NonNullable<HomeData["next"]> }) {
         </div>
       </div>
       {meeting.shape && (
-        <svg className="hero-track" viewBox={SHAPE_VIEWBOX} role="img" aria-label={`Outline of ${meeting.circuit}`}>
-          <path d={meeting.shape.path} className="track-glow" />
-          <path d={meeting.shape.path} className="track-line" />
-          <circle cx={meeting.shape.startX} cy={meeting.shape.startY} r={9} className="track-start" />
-        </svg>
+        <figure className="hero-figure">
+          <svg className="hero-track" viewBox={SHAPE_VIEWBOX} role="img" aria-label={`Outline of ${meeting.circuit}`}>
+            <path d={meeting.shape.path} className="track-glow" />
+            <path d={meeting.shape.path} className="track-line" />
+            <circle cx={meeting.shape.startX} cy={meeting.shape.startY} r={9} className="track-start" />
+          </svg>
+          {meeting.shape.year < new Date(meeting.dateStart).getUTCFullYear() && <figcaption className="layout-note">{meeting.shape.year} layout</figcaption>}
+        </figure>
       )}
-      {!meeting.shape && <Link href="#calendar" className="note" style={{ alignSelf: "end" }}>No outline yet: drawn after the first session here is downloaded.</Link>}
+      {!meeting.shape && <p className="note" style={{ alignSelf: "end" }}>New circuit: its outline is drawn after the first session here.</p>}
     </section>
   );
 }
