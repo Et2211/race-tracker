@@ -4,6 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { FIRST_YEAR, type Catalog } from "@/lib/session/catalog";
 
+/** "Sat 22 Nov, 04:00 UTC". UTC so the server and every viewer agree. */
+const formatWhen = (iso: string) => {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return `${day}, ${d.toISOString().slice(11, 16)} UTC`;
+};
+
 /** Season, then Grand Prix, then session. Navigates to the chosen session. */
 export function SessionPicker({ label, current }: { label: string; current?: { year: number; meetingKey: number; sessionKey: number } }) {
   const router = useRouter();
@@ -74,7 +81,13 @@ export function SessionPicker({ label, current }: { label: string; current?: { y
             {meeting?.sessions.map((s) => (
               <option key={s.sessionKey} value={s.sessionKey} disabled={!s.available}>
                 {s.name}
-                {!s.available ? " (results not final yet)" : s.downloaded ? " · downloaded" : " · downloads in about 1½ min"}
+                {s.upcoming
+                  ? ` · not run yet, ${formatWhen(s.dateStart)}`
+                  : !s.available
+                    ? " · results not final yet"
+                    : s.downloaded
+                      ? " · downloaded"
+                      : " · downloads in about 1½ min"}
               </option>
             ))}
           </select>

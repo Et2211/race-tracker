@@ -8,14 +8,13 @@ import { readJson, writeJson } from "@/lib/storage/store";
 import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type LearnedSectors } from "./assemble";
+import { SETTLE_MS } from "./catalog";
 import { encodeChunk } from "./telemetry";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 export const metaKey = (sessionKey: number) => `sessions/${sessionKey}/meta.json`;
 export const chunkKey = (sessionKey: number, index: number) => `sessions/${sessionKey}/chunk-${index}.json`;
 
-/** OpenF1 keeps adding results and pit data for a few hours after a session. Only cache settled sessions. */
-const SETTLE_MS = 3 * 60 * 60_000;
 
 export class NotReadyError extends Error {}
 
