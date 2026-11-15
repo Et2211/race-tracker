@@ -13,11 +13,31 @@ import { isRowTopic, isTelemetryTopic, ROW_TOPICS, rowKey, stripFeedFields, TELE
  * receives to the live store. Relays start every minute and overlap, so each one only needs to
  * be right about what it saw; the store keeps one copy of everything.
  */
-export const MQTT_URL = process.env.OPENF1_MQTT_URL ?? "wss://mqtt.openf1.org:8084/mqtt";
+/**
+ * Where to connect, in order. OpenF1 (https://openf1.org/auth.html) recommends plain MQTT over
+ * TLS for backends, keeping MQTT over WebSocket for browsers; WebSocket stays as the fallback in
+ * case a host blocks port 8883. OPENF1_MQTT_URL names a single address instead (the local fake).
+ */
+export const MQTT_URLS = process.env.OPENF1_MQTT_URL ? [process.env.OPENF1_MQTT_URL] : ["mqtts://mqtt.openf1.org:8883", "wss://mqtt.openf1.org:8084/mqtt"];
+
+/** Connects to the first address that answers; each gets `timeoutMs`. */
+export async function connectFeed(options: mqtt.IClientOptions, timeoutMs = 10_000, log: (line: string) => void = () => {}, urls: string[] = MQTT_URLS): Promise<{ client: mqtt.MqttClient; url: string }> {
+  let last: unknown = null;
+  for (const url of urls) {
+    try {
+      return { client: await mqtt.connectAsync(url, { ...options, connectTimeout: timeoutMs }), url };
+    } catch (e) {
+      last = e;
+      const err = e as { message?: string; code?: string };
+      log(`could not connect to ${url}: ${[err.code, err.message].filter(Boolean).join(" ") || String(e)}`);
+    }
+  }
+  throw last instanceof Error ? last : new Error("Could not connect to the live feed");
+}
 /** How far back a relay fills a gap it finds (nobody connected) from REST. Older gaps wait for the normal download. */
 const CATCH_UP_MAX_S = 10 * 60;
 
-export type RelayReport = { relayId: string; sessionKey: number; messages: number; rows: number; buckets: number; caughtUp: { from: number; to: number } | null; error: string | null };
+export type RelayReport = { relayId: string; sessionKey: number; via: string | null; messages: number; rows: number; buckets: number; caughtUp: { from: number; to: number } | null; error: string | null };
 
 /** Stored data older than this when a relay starts means nobody was relaying: fill the gap from REST. */
 const STALE_S = 15;
@@ -29,7 +49,7 @@ export async function runRelay({ sessionKey, durationMs, store, log = () => {} }
   if (!credentials || !token) throw new Error("OpenF1 credentials are not set");
 
   const relayId = randomUUID();
-  const report: RelayReport = { relayId, sessionKey, messages: 0, rows: 0, buckets: 0, caughtUp: null, error: null };
+  const report: RelayReport = { relayId, sessionKey, via: null, messages: 0, rows: 0, buckets: 0, caughtUp: null, error: null };
   const deadline = Date.now() + durationMs;
   const before = await store.status(sessionKey);
   const collector = new BucketCollector();
@@ -37,14 +57,12 @@ export async function runRelay({ sessionKey, durationMs, store, log = () => {} }
   let unsaved: StoredBucket[] = []; // closed seconds whose write failed, retried next time round
   let subscribedAt: string | null = null;
 
-  const client = await mqtt.connectAsync(MQTT_URL, {
-    username: credentials.username,
-    password: token,
-    clientId: `race-tracker-${relayId.slice(0, 8)}`,
-    clean: true,
-    connectTimeout: 15_000,
-    reconnectPeriod: 2_000,
-  });
+  const { client, url } = await connectFeed(
+    { username: credentials.username, password: token, clientId: `race-tracker-${relayId.slice(0, 8)}`, clean: true, reconnectPeriod: 2_000 },
+    10_000,
+    log,
+  );
+  report.via = url;
   // Before reconnecting, make sure the password is a current token.
   client.on("offline", () => {
     accessToken(Math.max(60_000, deadline - Date.now() + 60_000))
