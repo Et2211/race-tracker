@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>F1 Race Dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+body{margin:0;background:#0E1014;color:#E8EAED;font-family:'Barlow',system-ui,sans-serif}
+button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.hd{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#9AA3B2;font-weight:600}
+.qrow{display:grid;grid-template-columns:28px minmax(0,1.9fr) repeat(3,minmax(0,1fr)) minmax(0,1.25fr) minmax(0,.9fr);align-items:center;gap:6px;padding:2px 8px;border-radius:6px}
+.rrow{display:grid;grid-template-columns:28px minmax(0,1.8fr) minmax(0,.95fr) minmax(0,.8fr) repeat(3,minmax(0,1fr)) minmax(0,1.2fr);align-items:center;gap:6px;padding:2px 8px;border-radius:6px}
+.stk{position:sticky;top:0;background:#161A21;z-index:1}
+.sel{background:#212836}
+.cut{border-bottom:2px dashed #E10600;border-radius:6px 6px 0 0;margin-bottom:6px;padding-bottom:4px}
+.num{font-family:'JetBrains Mono',monospace;font-size:14px;font-variant-numeric:tabular-nums;text-align:right}
+.tm{font-family:'JetBrains Mono',monospace;font-size:14px;font-variant-numeric:tabular-nums;text-align:right;padding:7px 6px;border-radius:4px}
+.tm.p{background:#8E3BFF;color:#fff;font-weight:600}
+.tm.g{background:#2FD07A;color:#052E16;font-weight:600}
+.drv{background:none;border:0;color:inherit;font:inherit;padding:0;margin:0;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;min-height:44px;width:100%}
+.drv:focus-visible{border-radius:4px}
+.bar{width:4px;height:24px;border-radius:2px;flex:none}
+.tA{background:#60A5FA}.tE{background:#FB923C}.tV{background:#34D399}.tR{background:#FB7185}
+.code{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;letter-spacing:.02em}
+.inc{background:#FFD60A;color:#1A1500;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:3px}
+.dot{fill:#F4F5F7;stroke:#0E1014;stroke-width:2}
+.dot.inv{stroke:#FFD60A;stroke-width:4}
+.ring{fill:none;stroke:#E10600;stroke-width:3;opacity:0}
+.ring.on{opacity:1}
+.seg{min-height:44px;padding:0 16px;background:transparent;border:0;color:#E8EAED;font:600 14px 'Barlow',sans-serif;cursor:pointer}
+.seg.on{background:#E8EAED;color:#0E1014}
+.tab{min-height:44px;padding:0 18px;background:transparent;border:1px solid #3B4252;border-radius:8px;color:#E8EAED;font:600 15px 'Barlow',sans-serif;cursor:pointer}
+.tab.on{background:#E8EAED;color:#0E1014;border-color:#E8EAED}
+.ev{font-family:'JetBrains Mono',monospace;font-size:13px;color:#C9CFD9;line-height:1.5}
+</style>
+</helmet>
+
+<div style="width:100%;max-width:1440px;margin:0 auto;box-sizing:border-box;padding:24px;display:flex;flex-direction:column;gap:16px">
+
+  <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:4px">
+    <div>
+      <div class="hd" style="color:#FF4B3E">Race weekend dashboard</div>
+      <h1 style="margin:4px 0 0;font-family:'Barlow Condensed',sans-serif;font-size:46px;line-height:1;font-weight:700;letter-spacing:.01em">Sample Grand Prix</h1>
+      <p style="margin:8px 0 0;color:#9AA3B2;font-size:15px">Fictional circuit and drivers, laid out for live timing data.</p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span style="border:1px solid #3B4252;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">Sample data</span>
+      <span style="border:1px solid #3B4252;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600">Lap {{lap}} / 57</span>
+      <sc-if value="{{sectorHi}}" hint-placeholder-val="{{true}}">
+        <span style="background:#FFD60A;color:#1A1500;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700">{{flagWord}} · Marshal sector 14</span>
+      </sc-if>
+      <sc-if value="{{scOn}}" hint-placeholder-val="{{false}}">
+        <span style="background:#FFD60A;color:#1A1500;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700">Safety car</span>
+      </sc-if>
+      <sc-if value="{{clearOn}}" hint-placeholder-val="{{false}}">
+        <span style="border:1px solid #2FD07A;color:#2FD07A;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700">Track clear</span>
+      </sc-if>
+    </div>
+  </header>
+
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;background:#161A21;border:1px solid #262C37;border-radius:12px;padding:10px 16px">
+    <button aria-haspopup="listbox" style="min-height:44px;display:inline-flex;align-items:center;gap:10px;background:#1D2129;border:1px solid #3B4252;border-radius:8px;color:#E8EAED;font:600 15px 'Barlow',sans-serif;padding:0 14px;cursor:pointer">
+      Sample Grand Prix · Race
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="fill:none;stroke:#9AA3B2;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M3 5l4 4 4-4"/></svg>
+    </button>
+    <div role="group" aria-label="Data mode" style="display:inline-flex;border:1px solid #3B4252;border-radius:8px;overflow:hidden">
+      <button class="seg {{liveCls}}" aria-pressed="{{isLive}}" onClick="{{setLive}}">Live</button>
+      <button class="seg {{replayCls}}" aria-pressed="{{isReplay}}" onClick="{{setReplay}}">Replay</button>
+    </div>
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{false}}">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:14px;color:#E8EAED"><span style="width:10px;height:10px;border-radius:50%;background:#E10600"></span><strong style="font-weight:600">Live</strong><span style="color:#9AA3B2">about 3 s behind the track</span></span>
+    </sc-if>
+    <sc-if value="{{isReplay}}" hint-placeholder-val="{{true}}">
+      <div style="display:flex;align-items:center;gap:12px;flex:1 1 260px;min-width:0">
+        <label for="scrub" style="font-size:14px;color:#9AA3B2;white-space:nowrap">Replay lap <strong style="color:#E8EAED;font-weight:600">{{lap}}</strong></label>
+        <input id="scrub" type="range" min="1" max="57" value="{{lap}}" onChange="{{onScrub}}" style="flex:1;min-width:120px;accent-color:#E10600;height:44px;margin:0">
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch">
+
+    <section style="flex:1.6 1 560px;min-width:0;background:#161A21;border:1px solid #262C37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px">
+        <h2 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:600">Track map</h2>
+        <div style="font-size:14px;color:#9AA3B2"><strong style="color:#E8EAED;font-weight:600">{{selName}}</strong> · {{selMeta}}</div>
+      </div>
+
+      <svg viewBox="0 0 600 410" role="img" aria-label="Map of a sample circuit with three sectors, car positions and the marshal sector under yellow flag" style="width:100%;height:auto;display:block">
+        <sc-if value="{{sectorHi}}" hint-placeholder-val="{{true}}">
+          <g>
+            <path d="M 133 228 L 120 245 C 95 280 70 300 70 330" style="fill:none;stroke:#FFD60A;stroke-opacity:.22;stroke-width:40;stroke-linecap:round;stroke-linejoin:round"/>
+          </g>
+        </sc-if>
+        <g style="fill:none;stroke-linecap:round;stroke-linejoin:round">
+          <path d="M 150 360 L 430 360 C 500 360 540 330 540 280 C 540 235 505 215 470 215" style="stroke:#3A4150;stroke-width:24"/>
+          <path d="M 470 215 C 430 215 410 195 420 165 C 432 130 480 120 500 90 C 515 62 490 40 450 40 L 300 40 C 250 40 235 70 255 100 C 270 125 300 130 300 155 C 300 185 260 190 220 190" style="stroke:#3A4150;stroke-width:24"/>
+          <path d="M 220 190 C 170 190 140 215 120 245 C 95 280 70 300 70 330 C 70 350 100 360 150 360" style="stroke:#3A4150;stroke-width:24"/>
+          <path d="M 150 360 L 430 360 C 500 360 540 330 540 280 C 540 235 505 215 470 215" style="stroke:#1D222B;stroke-width:19"/>
+          <path d="M 470 215 C 430 215 410 195 420 165 C 432 130 480 120 500 90 C 515 62 490 40 450 40 L 300 40 C 250 40 235 70 255 100 C 270 125 300 130 300 155 C 300 185 260 190 220 190" style="stroke:#1D222B;stroke-width:19"/>
+          <path d="M 220 190 C 170 190 140 215 120 245 C 95 280 70 300 70 330 C 70 350 100 360 150 360" style="stroke:#1D222B;stroke-width:19"/>
+        </g>
+        <sc-if value="{{scOn}}" hint-placeholder-val="{{false}}">
+          <g style="fill:none;stroke:#FFD60A;stroke-opacity:.5;stroke-width:19;stroke-linecap:round;stroke-linejoin:round">
+            <path d="M 150 360 L 430 360 C 500 360 540 330 540 280 C 540 235 505 215 470 215"/>
+            <path d="M 470 215 C 430 215 410 195 420 165 C 432 130 480 120 500 90 C 515 62 490 40 450 40 L 300 40 C 250 40 235 70 255 100 C 270 125 300 130 300 155 C 300 185 260 190 220 190"/>
+            <path d="M 220 190 C 170 190 140 215 120 245 C 95 280 70 300 70 330 C 70 350 100 360 150 360"/>
+          </g>
+        </sc-if>
+        <sc-if value="{{sectorHi}}" hint-placeholder-val="{{true}}">
+          <g>
+            <path d="M 133 228 L 120 245 C 95 280 70 300 70 330" style="fill:none;stroke:#FFD60A;stroke-opacity:.9;stroke-width:19;stroke-linecap:round;stroke-linejoin:round"/>
+          </g>
+        </sc-if>
+        <g style="fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:2.5">
+          <path d="M 150 360 L 430 360 C 500 360 540 330 540 280 C 540 235 505 215 470 215" style="stroke:#38BDF8"/>
+          <path d="M 470 215 C 430 215 410 195 420 165 C 432 130 480 120 500 90 C 515 62 490 40 450 40 L 300 40 C 250 40 235 70 255 100 C 270 125 300 130 300 155 C 300 185 260 190 220 190" style="stroke:#2DD4BF"/>
+          <path d="M 220 190 C 170 190 140 215 120 245 C 95 280 70 300 70 330 C 70 350 100 360 150 360" style="stroke:#F472B6"/>
+        </g>
+        <g style="stroke:#F4F5F7;stroke-linecap:butt">
+          <line x1="470" y1="203" x2="470" y2="227" style="stroke-width:2"/>
+          <line x1="220" y1="178" x2="220" y2="202" style="stroke-width:2"/>
+          <line x1="150" y1="348" x2="150" y2="372" style="stroke-width:4"/>
+        </g>
+        <g style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;text-anchor:middle">
+          <text x="300" y="396" style="fill:#38BDF8">S1</text>
+          <text x="530" y="116" style="fill:#2DD4BF">S2</text>
+          <text x="32" y="300" style="fill:#F472B6">S3</text>
+          <text x="150" y="396" style="fill:#9AA3B2;font-size:13px;font-weight:600">START / FINISH</text>
+        </g>
+        <sc-if value="{{sectorHi}}" hint-placeholder-val="{{true}}">
+          <g>
+            <line x1="46" y1="246" x2="46" y2="282" style="stroke:#F4F5F7;stroke-width:2.5;stroke-linecap:round"/>
+            <polygon points="46,246 74,255 46,264" style="fill:#FFD60A"/>
+            <sc-if value="{{isDouble}}" hint-placeholder-val="{{true}}">
+              <polygon points="46,266 74,275 46,284" style="fill:#FFD60A"/>
+            </sc-if>
+            <line x1="150" y1="288" x2="104" y2="278" style="stroke:#FFD60A;stroke-width:1.5;stroke-dasharray:4 3"/>
+            <rect x="150" y="256" width="226" height="66" rx="6" style="fill:#1D2129;stroke:#FFD60A;stroke-width:1.5"/>
+            <text x="164" y="278" style="fill:#FFD60A;font-family:'Barlow',sans-serif;font-weight:700;font-size:13px;letter-spacing:.08em">{{flagWord}}</text>
+            <text x="164" y="297" style="fill:#E8EAED;font-family:'Barlow',sans-serif;font-weight:500;font-size:13px">Marshal sector 14</text>
+            <sc-if value="{{hasCars}}" hint-placeholder-val="{{true}}">
+              <text x="164" y="314" style="fill:#9AA3B2;font-family:'Barlow',sans-serif;font-weight:500;font-size:12px">Stopped first: #58 COS</text>
+            </sc-if>
+            <sc-if value="{{noCars}}" hint-placeholder-val="{{false}}">
+              <text x="164" y="314" style="fill:#9AA3B2;font-family:'Barlow',sans-serif;font-weight:500;font-size:12px">No stopped car found</text>
+            </sc-if>
+          </g>
+        </sc-if>
+        <sc-if value="{{scOn}}" hint-placeholder-val="{{false}}">
+          <g>
+            <rect x="170" y="238" width="260" height="56" rx="6" style="fill:#1D2129;stroke:#FFD60A;stroke-width:1.5"/>
+            <text x="184" y="261" style="fill:#FFD60A;font-family:'Barlow',sans-serif;font-weight:700;font-size:13px;letter-spacing:.08em">SAFETY CAR</text>
+            <text x="184" y="280" style="fill:#E8EAED;font-family:'Barlow',sans-serif;font-weight:500;font-size:13px">Whole track under caution</text>
+          </g>
+        </sc-if>
+        <sc-for list="{{dots}}" as="d" hint-placeholder-count="8">
+          <g>
+            <circle cx="{{d.x}}" cy="{{d.y}}" r="17" class="ring {{d.ring}}"/>
+            <circle cx="{{d.x}}" cy="{{d.y}}" r="11.5" class="dot {{d.cls}}"/>
+            <text x="{{d.x}}" y="{{d.ty}}" style="text-anchor:middle;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:11px;fill:#0E1014">{{d.n}}</text>
+          </g>
+        </sc-for>
+      </svg>
+
+      <div style="display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:#9AA3B2">
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:4px;border-radius:2px;background:#38BDF8"></span>Sector 1</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:4px;border-radius:2px;background:#2DD4BF"></span>Sector 2</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:4px;border-radius:2px;background:#F472B6"></span>Sector 3</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:8px;border-radius:2px;background:#FFD60A"></span>Flagged marshal sector</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:50%;background:#F4F5F7;border:2px solid #FFD60A;box-sizing:border-box"></span>Stopped or involved</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;border:2px solid #E10600;box-sizing:border-box"></span>Selected driver</span>
+      </div>
+    </section>
+
+    <aside style="flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:16px">
+
+      <sc-if value="{{sectorHi}}" hint-placeholder-val="{{true}}">
+        <section style="background:#161A21;border:1px solid #FFD60A;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
+            <span style="background:#FFD60A;color:#1A1500;font-weight:700;font-size:13px;letter-spacing:.08em;padding:4px 10px;border-radius:4px">{{flagWord}}</span>
+            <span style="font-size:14px;color:#9AA3B2">Raised 14:52:14 · Lap {{lap}} / 57</span>
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:600;line-height:1.1">Marshal sector 14</div>
+
+          <sc-if value="{{hasCars}}" hint-placeholder-val="{{true}}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div class="hd">Possibly involved</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="background:#1D2129;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span class="bar tV"></span>
+                    <div style="flex:1;min-width:0"><span class="code">#58 COS</span> <span style="color:#9AA3B2;font-size:14px">Costa</span></div>
+                    <span style="font-size:12px;font-weight:700;letter-spacing:.06em;color:#FFD60A">STOPPED FIRST</span>
+                  </div>
+                  <div class="ev">0 km/h from 14:52:08, 6 s before the flag</div>
+                  <div class="ev">Position unchanged for 42 s</div>
+                </div>
+                <div style="background:#1D2129;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span class="bar tE"></span>
+                    <div style="flex:1;min-width:0"><span class="code">#41 BRA</span> <span style="color:#9AA3B2;font-size:14px">Brandt</span></div>
+                    <span style="font-size:12px;font-weight:700;letter-spacing:.06em;color:#9AA3B2">POSSIBLE CONTACT</span>
+                  </div>
+                  <div class="ev">Within 6 m of #58 at 14:52:07</div>
+                  <div class="ev">Speed fell 82 km/h in under a second, resumed 14:52:31</div>
+                </div>
+              </div>
+              <div style="font-size:13px;color:#9AA3B2;line-height:1.45">11 other cars slowed after the flag and are treated as lifting for the yellow.</div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-top:1px solid #262C37;padding-top:12px">
+                <span style="border:1px solid #FB923C;color:#FB923C;font-size:12px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:4px">CONFIDENCE: MEDIUM</span>
+                <span style="font-size:13px;color:#9AA3B2;flex:1 1 200px;line-height:1.4">One car stopped before the flag. Contact is inferred from proximity and speed.</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{noCars}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div class="hd">Possibly involved</div>
+              <div style="background:#1D2129;border-radius:8px;padding:14px">
+                <div style="font-size:16px;font-weight:600">No stopped car found</div>
+                <div style="font-size:14px;color:#9AA3B2;margin-top:4px;line-height:1.45">No car stopped near this sector before the flag. It may be debris, marshals on track or a car off the racing line.</div>
+              </div>
+              <span style="align-self:flex-start;border:1px solid #9AA3B2;color:#9AA3B2;font-size:12px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:4px">CONFIDENCE: NONE</span>
+            </div>
+          </sc-if>
+
+          <p style="margin:0;font-size:13px;color:#9AA3B2;line-height:1.45">Calculated from car speed and position, not reported by the stewards. It shows who stopped or was involved, not who was at fault.</p>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{scOn}}" hint-placeholder-val="{{false}}">
+        <section style="background:#161A21;border:1px solid #FFD60A;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px">
+          <span style="align-self:flex-start;background:#FFD60A;color:#1A1500;font-weight:700;font-size:13px;letter-spacing:.08em;padding:4px 10px;border-radius:4px">SAFETY CAR</span>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:600;line-height:1.1">Whole track under caution</div>
+          <p style="margin:0;font-size:14px;color:#9AA3B2;line-height:1.45">The field bunches up behind the safety car, so gaps close. Sector flags can still be active alongside it.</p>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{clearOn}}" hint-placeholder-val="{{false}}">
+        <section style="background:#161A21;border:1px solid #262C37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px">
+          <span style="align-self:flex-start;border:1px solid #2FD07A;color:#2FD07A;font-weight:700;font-size:13px;letter-spacing:.08em;padding:4px 10px;border-radius:4px">TRACK CLEAR</span>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:600;line-height:1.1">No active flags</div>
+          <p style="margin:0;font-size:14px;color:#9AA3B2;line-height:1.45">When a flag is shown, the marshal sector lights up on the map and any cars that stopped nearby are listed here.</p>
+        </section>
+      </sc-if>
+
+      <section style="background:#161A21;border:1px solid #262C37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;flex:1">
+        <h2 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:600">Race control</h2>
+        <div style="display:flex;flex-direction:column;gap:0;font-family:'JetBrains Mono',monospace;font-size:13px">
+          <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #262C37"><span style="color:#9AA3B2;flex:none">L{{lap}}</span><span style="color:{{logColor}}">{{logText}}</span></div>
+          <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #262C37"><span style="color:#9AA3B2;flex:none">L22</span><span style="color:#2FD07A">CLEAR IN TRACK SECTOR 6</span></div>
+          <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #262C37"><span style="color:#9AA3B2;flex:none">L22</span><span style="color:#FFD60A">YELLOW IN TRACK SECTOR 6</span></div>
+          <div style="display:flex;gap:12px;padding:10px 0"><span style="color:#9AA3B2;flex:none">L1</span><span style="color:#2FD07A">GREEN LIGHT - PIT EXIT OPEN</span></div>
+        </div>
+      </section>
+
+    </aside>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+    <section style="flex:1 1 560px;min-width:0;background:#161A21;border:1px solid #262C37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <h2 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:600">Qualifying · sector times</h2>
+        <p style="margin:4px 0 0;font-size:14px;color:#9AA3B2">Best lap per driver in the selected phase. Purple is the fastest in the field, green is a personal best.</p>
+      </div>
+      <div role="group" aria-label="Qualifying phase" style="display:flex;gap:8px">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+          <button class="tab {{t.cls}}" aria-pressed="{{t.on}}" onClick="{{t.pick}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+      <div style="overflow:auto;max-height:520px">
+        <div role="table" aria-label="Qualifying sector times" style="min-width:560px">
+          <div role="row" class="qrow stk">
+            <span role="columnheader" class="hd">P</span>
+            <span role="columnheader" class="hd">Driver</span>
+            <span role="columnheader" class="hd" style="text-align:right">S1</span>
+            <span role="columnheader" class="hd" style="text-align:right">S2</span>
+            <span role="columnheader" class="hd" style="text-align:right">S3</span>
+            <span role="columnheader" class="hd" style="text-align:right">Lap</span>
+            <span role="columnheader" class="hd" style="text-align:right">Gap</span>
+          </div>
+          <sc-for list="{{quali}}" as="r" hint-placeholder-count="8">
+            <div role="row" class="qrow {{r.rowCls}}">
+              <span role="cell" class="num" style="text-align:left;color:#9AA3B2">{{r.pos}}</span>
+              <span role="cell">
+                <button class="drv" onClick="{{r.pick}}" aria-label="Select driver {{r.code}}">
+                  <span class="bar {{r.teamCls}}"></span>
+                  <span class="code">{{r.code}}</span>
+                  <span style="color:#9AA3B2;font-size:14px">{{r.name}}</span>
+                </button>
+              </span>
+              <span role="cell" class="tm {{r.c1}}">{{r.s1}}</span>
+              <span role="cell" class="tm {{r.c2}}">{{r.s2}}</span>
+              <span role="cell" class="tm {{r.c3}}">{{r.s3}}</span>
+              <span role="cell" class="num" style="font-weight:600">{{r.lap}}</span>
+              <span role="cell" class="num" style="color:#9AA3B2">{{r.gap}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <sc-if value="{{hasCut}}" hint-placeholder-val="{{true}}">
+        <div style="font-size:13px;color:#9AA3B2;display:flex;align-items:center;gap:8px"><span style="width:24px;border-top:2px dashed #E10600"></span>Drivers below the dashed line are eliminated</div>
+      </sc-if>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;background:#1D2129;border-radius:8px;padding:12px 14px;align-items:center;justify-content:space-between">
+        <div>
+          <div class="hd">Ideal lap · whole session</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;margin-top:2px">{{idealLap}}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:#9AA3B2">
+          <span><span style="color:#E8EAED;font-family:'JetBrains Mono',monospace">{{ideal1}}</span> S1 · {{idealCode1}}</span>
+          <span><span style="color:#E8EAED;font-family:'JetBrains Mono',monospace">{{ideal2}}</span> S2 · {{idealCode2}}</span>
+          <span><span style="color:#E8EAED;font-family:'JetBrains Mono',monospace">{{ideal3}}</span> S3 · {{idealCode3}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="flex:1.2 1 620px;min-width:0;background:#161A21;border:1px solid #262C37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <h2 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:600">Race · splits</h2>
+        <p style="margin:4px 0 0;font-size:14px;color:#9AA3B2">Last completed lap ({{lastLap}}) with live gaps. Purple is the fastest split of the lap, green is a personal best.</p>
+      </div>
+      <div style="overflow:auto;max-height:520px">
+        <div role="table" aria-label="Race gaps and sector splits" style="min-width:600px">
+          <div role="row" class="rrow stk">
+            <span role="columnheader" class="hd">P</span>
+            <span role="columnheader" class="hd">Driver</span>
+            <span role="columnheader" class="hd" style="text-align:right">Gap</span>
+            <span role="columnheader" class="hd" style="text-align:right">Int</span>
+            <span role="columnheader" class="hd" style="text-align:right">S1</span>
+            <span role="columnheader" class="hd" style="text-align:right">S2</span>
+            <span role="columnheader" class="hd" style="text-align:right">S3</span>
+            <span role="columnheader" class="hd" style="text-align:right">Last lap</span>
+          </div>
+          <sc-for list="{{race}}" as="r" hint-placeholder-count="8">
+            <div role="row" class="rrow {{r.rowCls}}">
+              <span role="cell" class="num" style="text-align:left;color:#9AA3B2">{{r.pos}}</span>
+              <span role="cell">
+                <button class="drv" onClick="{{r.pick}}" aria-label="Select driver {{r.code}}">
+                  <span class="bar {{r.teamCls}}"></span>
+                  <span class="code">{{r.code}}</span>
+                  <sc-if value="{{r.flagged}}" hint-placeholder-val="{{false}}"><span class="inc">{{r.tag}}</span></sc-if>
+                </button>
+              </span>
+              <span role="cell" class="num">{{r.gap}}</span>
+              <span role="cell" class="num" style="color:#9AA3B2">{{r.int}}</span>
+              <span role="cell" class="tm {{r.c1}}">{{r.s1}}</span>
+              <span role="cell" class="tm {{r.c2}}">{{r.s2}}</span>
+              <span role="cell" class="tm {{r.c3}}">{{r.s3}}</span>
+              <span role="cell" class="num" style="font-weight:600">{{r.lap}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background:#1D2129;border-radius:8px;padding:14px">
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:6px">
+          <div class="hd">Gap to leader · laps 25–34</div>
+          <div style="font-size:13px;color:#9AA3B2">Seconds behind LIN · lapped cars left out</div>
+        </div>
+        <svg viewBox="0 0 430 176" role="img" aria-label="Line chart of the gap to the race leader over laps 25 to 34 for OKA, DUA and MAR" style="width:100%;height:auto;display:block">
+          <g style="stroke:#2E3542;stroke-width:1">
+            <line x1="30" y1="150" x2="380" y2="150"/>
+            <line x1="30" y1="111" x2="380" y2="111"/>
+            <line x1="30" y1="72" x2="380" y2="72"/>
+            <line x1="30" y1="33" x2="380" y2="33"/>
+          </g>
+          <g style="fill:#9AA3B2;font-family:'JetBrains Mono',monospace;font-size:11px">
+            <text x="2" y="154">0s</text>
+            <text x="2" y="115">+3</text>
+            <text x="2" y="76">+6</text>
+            <text x="2" y="37">+9</text>
+            <text x="30" y="170" style="text-anchor:middle">L25</text>
+            <text x="185.6" y="170" style="text-anchor:middle">L29</text>
+            <text x="380" y="170" style="text-anchor:middle">L34</text>
+          </g>
+          <g style="fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round">
+            <polyline points="30,122.7 68.9,121.4 107.8,118.8 146.7,120.1 185.6,117.5 224.4,116.2 263.3,117.5 302.2,114.9 341.1,114.9 380,113.6" style="stroke:#60A5FA"/>
+            <polyline points="30,85 68.9,82.4 107.8,81.1 146.7,78.5 185.6,77.2 224.4,75.9 263.3,73.3 302.2,73.3 341.1,72 380,70.7" style="stroke:#FB7185"/>
+            <polyline points="30,44.7 68.9,40.8 107.8,38.2 146.7,36.9 185.6,34.3 224.4,33 263.3,31.7 302.2,30.4 341.1,29.1 380,27.8" style="stroke:#34D399"/>
+          </g>
+          <g style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px">
+            <text x="387" y="118" style="fill:#60A5FA">OKA</text>
+            <text x="387" y="75" style="fill:#FB7185">DUA</text>
+            <text x="387" y="32" style="fill:#34D399">MAR</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+  </div>
+
+  <footer style="font-size:13px;color:#9AA3B2;line-height:1.5;padding:8px 4px 0">
+    All values on this page are placeholders for layout. Planned sources: OpenF1 for laps, sector times, positions, car speed and race-control messages; Jolpica-F1 for schedule and results. Live streaming during sessions needs OpenF1's paid tier. Stopped-car detection is calculated by us from car speed and position. The lap data has no deleted-lap flag, so laps deleted for track limits can still appear in the qualifying table.
+  </footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","default":"double","options":["double","yellow","safety_car","clear"],"section":"Scenario"},"$preview":{"width":1360,"height":1900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 4, mode: 'replay', lap: 35, qPhase: 'Q3' };
+  }
+
+  renderVals() {
+    const sc = this.props.scenario ?? 'double';
+    const isDouble = sc === 'double';
+    const isYellow = sc === 'yellow';
+    const sectorHi = isDouble || isYellow;
+    const hasCars = isDouble;
+    const noCars = isYellow;
+    const scOn = sc === 'safety_car';
+    const clearOn = sc === 'clear';
+    const flagWord = isDouble ? 'DOUBLE YELLOW' : 'YELLOW';
+
+    let logText = 'CLEAR IN TRACK SECTOR 14';
+    let logColor = '#2FD07A';
+    if (isDouble) { logText = 'DOUBLE YELLOW IN TRACK SECTOR 14'; logColor = '#FFD60A'; }
+    else if (isYellow) { logText = 'YELLOW IN TRACK SECTOR 14'; logColor = '#FFD60A'; }
+    else if (scOn) { logText = 'SAFETY CAR DEPLOYED'; logColor = '#FFD60A'; }
+
+    const sel = this.state.sel;
+    const mode = this.state.mode;
+    const lap = this.state.lap;
+    const qp = this.state.qPhase;
+    const inv = isDouble ? [58, 41] : [];
+
+    const D = {
+      4:  { code: 'OKA', name: 'Okafor',    team: 'tA' },
+      9:  { code: 'LIN', name: 'Lindqvist', team: 'tE' },
+      16: { code: 'MAR', name: 'Marchetti', team: 'tV' },
+      21: { code: 'DUA', name: 'Duarte',    team: 'tR' },
+      27: { code: 'HAL', name: 'Haldane',   team: 'tR' },
+      33: { code: 'NGU', name: 'Nguyen',    team: 'tA' },
+      41: { code: 'BRA', name: 'Brandt',    team: 'tE' },
+      58: { code: 'COS', name: 'Costa',     team: 'tV' }
+    };
+
+    const fmtLap = (ms) => {
+      const m = Math.floor(ms / 60000);
+      const s = ((ms % 60000) / 1000).toFixed(3).padStart(6, '0');
+      return m + ':' + s;
+    };
+    const fmtS = (ms) => (ms / 1000).toFixed(3);
+
+    const QS = {
+      Q1: [
+        [4, 27.700, 34.300, 28.500], [9, 27.720, 34.280, 28.560], [16, 27.690, 34.350, 28.540],
+        [21, 27.800, 34.400, 28.480], [27, 27.760, 34.420, 28.600], [33, 27.850, 34.450, 28.700],
+        [41, 27.900, 34.520, 28.760], [58, 27.950, 34.560, 28.800]
+      ],
+      Q2: [
+        [4, 27.451, 34.020, 28.230], [9, 27.520, 34.010, 28.300], [16, 27.480, 34.150, 28.260],
+        [21, 27.610, 34.190, 28.150], [27, 27.540, 34.260, 28.360], [33, 27.700, 34.300, 28.400]
+      ],
+      Q3: [
+        [4, 27.318, 33.904, 28.114], [9, 27.402, 33.871, 28.203],
+        [16, 27.355, 34.012, 28.190], [21, 27.501, 34.087, 28.071]
+      ]
+    };
+    const toMs = (rows) => rows.map((r) => ({ n: r[0], s: [Math.round(r[1] * 1000), Math.round(r[2] * 1000), Math.round(r[3] * 1000)] }));
+    const ALL = { Q1: toMs(QS.Q1), Q2: toMs(QS.Q2), Q3: toMs(QS.Q3) };
+
+    const pb = {};
+    const best = [{ v: Infinity, n: 0 }, { v: Infinity, n: 0 }, { v: Infinity, n: 0 }];
+    Object.keys(ALL).forEach((ph) => {
+      ALL[ph].forEach((r) => {
+        if (!pb[r.n]) pb[r.n] = [Infinity, Infinity, Infinity];
+        for (let i = 0; i < 3; i++) {
+          if (r.s[i] < pb[r.n][i]) pb[r.n][i] = r.s[i];
+          if (r.s[i] < best[i].v) { best[i].v = r.s[i]; best[i].n = r.n; }
+        }
+      });
+    });
+
+    const phaseRows = ALL[qp].map((r) => ({ n: r.n, s: r.s, lap: r.s[0] + r.s[1] + r.s[2] }))
+      .sort((a, b) => a.lap - b.lap);
+    const colMin = [0, 1, 2].map((i) => Math.min.apply(null, phaseRows.map((r) => r.s[i])));
+    const cls = (r, i) => (r.s[i] === colMin[i] ? 'p' : (r.s[i] === pb[r.n][i] ? 'g' : ''));
+    const cutAfter = { Q1: 6, Q2: 4, Q3: 0 }[qp];
+    const poleLap = phaseRows[0].lap;
+
+    const pick = (n) => () => this.setState({ sel: n });
+
+    const quali = phaseRows.map((r, i) => ({
+      pos: i + 1, code: D[r.n].code, name: D[r.n].name, teamCls: D[r.n].team,
+      s1: fmtS(r.s[0]), c1: cls(r, 0),
+      s2: fmtS(r.s[1]), c2: cls(r, 1),
+      s3: fmtS(r.s[2]), c3: cls(r, 2),
+      lap: fmtLap(r.lap),
+      gap: i === 0 ? '—' : '+' + ((r.lap - poleLap) / 1000).toFixed(3),
+      rowCls: (r.n === sel ? 'sel ' : '') + (cutAfter > 0 && i + 1 === cutAfter ? 'cut' : ''),
+      pick: pick(r.n)
+    }));
+
+    const tabs = ['Q1', 'Q2', 'Q3'].map((p) => ({
+      label: p, on: p === qp, cls: p === qp ? 'on' : '',
+      pick: () => this.setState({ qPhase: p })
+    }));
+
+    const idealMs = best[0].v + best[1].v + best[2].v;
+
+    const R = [
+      [9,  'Leader', '—',   '27.812', 'g', '34.402', 'p', '28.511', 'g', '1:30.725'],
+      [4,  '+2.8',   '+2.8', '27.790', 'p', '34.455', 'g', '28.560', '',  '1:30.805'],
+      [21, '+6.1',   '+3.3', '27.930', '',  '34.510', '',  '28.470', 'p', '1:30.910'],
+      [16, '+9.4',   '+3.3', '27.880', '',  '34.620', 'g', '28.590', '',  '1:31.090'],
+      [33, '+14.0',  '+4.6', '28.010', 'g', '34.580', '',  '28.640', '',  '1:31.230'],
+      [27, '+17.5',  '+3.5', '27.960', '',  '34.790', '',  '28.700', 'g', '1:31.450'],
+      [58, '+22.3',  '+4.8', '28.120', '',  '34.700', '',  '28.810', '',  '1:31.630'],
+      [41, '+1 LAP', '+4.6', '28.050', '',  '34.850', '',  '28.880', '',  '1:31.780']
+    ];
+    const tagFor = { 58: 'STOPPED', 41: 'CONTACT?' };
+    const race = R.map((r, i) => ({
+      pos: i + 1, code: D[r[0]].code, teamCls: D[r[0]].team,
+      gap: r[1], int: r[2],
+      s1: r[3], c1: r[4], s2: r[5], c2: r[6], s3: r[7], c3: r[8],
+      lap: r[9],
+      flagged: inv.includes(r[0]),
+      tag: tagFor[r[0]] || 'INVOLVED',
+      rowCls: r[0] === sel ? 'sel' : '',
+      pick: pick(r[0])
+    }));
+
+    const P = {
+      9:  [250, 360], 4:  [205, 360], 21: [170, 360], 16: [122, 359],
+      33: [78, 345],  27: [76, 305],  58: [98, 273],  41: [133, 228]
+    };
+    const dots = Object.keys(P).map((k) => {
+      const n = Number(k);
+      return {
+        n, x: P[k][0], y: P[k][1], ty: P[k][1] + 4,
+        cls: inv.includes(n) ? 'inv' : '',
+        ring: n === sel ? 'on' : ''
+      };
+    }).sort((a, b) => (a.n === sel ? 1 : 0) - (b.n === sel ? 1 : 0));
+
+    const ri = R.findIndex((r) => r[0] === sel);
+    const qFinal = ['OKA', 'LIN', 'MAR', 'DUA', 'HAL', 'NGU', 'BRA', 'COS'].indexOf(D[sel].code);
+    const selName = '#' + sel + ' ' + D[sel].code + ' · ' + D[sel].name;
+    const selMeta = 'Quali P' + (qFinal + 1) + ' · Race P' + (ri + 1) + (ri === 0 ? ' · leading' : ' · ' + R[ri][1] + ' to leader');
+
+    return {
+      sectorHi, hasCars, noCars, scOn, clearOn, isDouble, flagWord, logText, logColor,
+      isLive: mode === 'live', isReplay: mode === 'replay',
+      liveCls: mode === 'live' ? 'on' : '', replayCls: mode === 'replay' ? 'on' : '',
+      setLive: () => this.setState({ mode: 'live' }),
+      setReplay: () => this.setState({ mode: 'replay' }),
+      onScrub: (e) => this.setState({ lap: Number(e.target.value) }),
+      lap, lastLap: lap - 1,
+      quali, tabs, hasCut: cutAfter > 0,
+      idealLap: fmtLap(idealMs),
+      ideal1: fmtS(best[0].v), ideal2: fmtS(best[1].v), ideal3: fmtS(best[2].v),
+      idealCode1: D[best[0].n].code, idealCode2: D[best[1].n].code, idealCode3: D[best[2].n].code,
+      race, dots, selName, selMeta
+    };
+  }
+}
+</script>
+</body>
+</html>

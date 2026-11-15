@@ -1,0 +1,22 @@
+{
+  "circuit_key": 12,
+  "note": "Where cars stopped on the racing line under isolated flags (decimetres from the start line), one observation per car per session. Written by `npm run backtest -- --learn`. A sector is drawn only when two independent observations agree within 100 m.",
+  "observations": {
+    "4": [
+      {
+        "arc": 7864,
+        "session_key": 11731,
+        "date": "2026-10-04T09:01:04.961Z",
+        "driver_number": 55
+      }
+    ],
+    "15": [
+      {
+        "arc": 39940,
+        "session_key": 11731,
+        "date": "2026-10-04T08:51:55.559Z",
+        "driver_number": 77
+      }
+    ]
+  }
+}
