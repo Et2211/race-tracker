@@ -75,7 +75,7 @@ Needs OpenF1's paid tier. Nothing here costs anything until `OPENF1_USERNAME` / 
 
 **On the day you subscribe:** add the credentials to `.env.local` and Vercel, run `npm run live:check` during a session, and run the `race-tracker-live-relay` job from `supabase/cron.sql` if it is not scheduled yet.
 
-**Testing without an account:** `npm run fake-openf1 -- --lap 10`, then start the app with `OPENF1_API_BASE=http://localhost:4100/v1 OPENF1_MQTT_URL=ws://localhost:4100/mqtt OPENF1_USERNAME=fake OPENF1_PASSWORD=fake CRON_SECRET=<any>`, call `/api/live/relay?session=11369` with the secret every minute, and open `/live/11369`.
+**Testing without an account:** `npm run fake-openf1 -- --lap 10`, then start the app with `OPENF1_API_BASE=http://localhost:4100/v1 OPENF1_MQTT_URL=mqtt://localhost:4101 OPENF1_USERNAME=fake OPENF1_PASSWORD=fake CRON_SECRET=<any>`, call `/api/live/relay?session=11369` with the secret every minute, and open `/live/11369`.
 
 ## Data sources
 

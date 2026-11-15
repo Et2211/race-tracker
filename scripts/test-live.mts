@@ -22,7 +22,10 @@ const PORT = 4110;
 const base = `http://localhost:${PORT}`;
 Object.assign(process.env, {
   OPENF1_API_BASE: `${base}/v1`,
-  OPENF1_MQTT_URL: `ws://localhost:${PORT}/mqtt`,
+  // The fake's TCP listener: its WebSocket one does not work on Node 26 (an aedes problem). The
+  // relay code is the same either way; the WebSocket transport is checked against the real
+  // broker by `npm run live:check`.
+  OPENF1_MQTT_URL: `mqtt://localhost:${PORT + 1}`,
   OPENF1_USERNAME: "fake",
   OPENF1_PASSWORD: "fake",
   LIVE_STORE: SUPABASE ? "" : "memory",

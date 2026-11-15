@@ -5,6 +5,8 @@
  *   POST /token                      form username/password -> {"access_token", "expires_in": "3600"}
  *   GET  /v1/<endpoint>?...          REST, bearer token required, only rows dated up to "now"
  *   ws://localhost:<port>/mqtt       MQTT over WebSocket, the token as password; topics v1/<endpoint>,
+ *   mqtt://localhost:<port + 1>      the same broker over plain TCP (aedes reads WebSocket streams
+ *                                    wrongly on Node 26; the TCP one works everywhere)
  *                                    messages are REST rows plus `_id` (increasing) and `_key`
  *
  *   npm run fake-openf1 -- [--session 11369] [--port 4100] [--lap 10]   (start just before that lap)
@@ -16,6 +18,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { createServer as createTcpServer } from "node:net";
 import nextEnv from "@next/env";
 import { Aedes } from "aedes";
 import { createWebSocketStream, WebSocketServer } from "ws";
@@ -179,6 +182,10 @@ let connected = 0;
 broker.on("client", (c) => console.log(`mqtt: ${c.id} connected (${++connected} open)`));
 broker.on("clientDisconnect", (c) => console.log(`mqtt: ${c.id} disconnected (${--connected} open)`));
 const wss = new WebSocketServer({ server, path: "/mqtt" });
+// The same broker over plain TCP: on Node 26, aedes loses data arriving through ws's stream
+// wrapper (the client's CONNECT never completes), while TCP works on every version.
+const tcp = createTcpServer((socket) => broker.handle(socket));
+tcp.listen(PORT + 1);
 wss.on("connection", (socket, req) => broker.handle(createWebSocketStream(socket) as never, req as never));
 
 let nextId = Date.now() * 1000;
@@ -237,6 +244,6 @@ setInterval(() => {
 
 server.listen(PORT, () => {
   console.log(`fake OpenF1 on http://localhost:${PORT}: replaying ${SESSION} (${meta.meeting.meeting_name} ${meta.session.session_name}) from ${new Date(sessionAtStart).toISOString().slice(11, 19)} session time`);
-  console.log(`  OPENF1_API_BASE=http://localhost:${PORT}/v1 OPENF1_MQTT_URL=ws://localhost:${PORT}/mqtt OPENF1_USERNAME=${USER} OPENF1_PASSWORD=<${USER === "fake" ? "fake" : "set"}>`);
+  console.log(`  OPENF1_API_BASE=http://localhost:${PORT}/v1 OPENF1_MQTT_URL=mqtt://localhost:${PORT + 1} (or ws://localhost:${PORT}/mqtt on Node 24) OPENF1_USERNAME=${USER} OPENF1_PASSWORD=<${USER === "fake" ? "fake" : "set"}>`);
   console.log(`  shifted session: ${session.date_start} to ${session.date_end}`);
 });
