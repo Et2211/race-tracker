@@ -1,0 +1,22 @@
+{
+  "circuit_key": 153,
+  "name": "Madring",
+  "note": "Where cars stopped on the racing line under isolated flags (decimetres from the start line), one observation per car per session. Written by `npm run backtest -- --learn`. A sector is drawn only when two independent observations agree within 100 m.",
+  "count": 26,
+  "observations": {
+    "23": [
+      {
+        "arc": 47300,
+        "session_key": 11369,
+        "date": "2026-09-13T13:12:24+00:00",
+        "driver_number": 44
+      },
+      {
+        "arc": 47350,
+        "session_key": 11369,
+        "date": "2026-09-13T13:26:37.865Z",
+        "driver_number": 18
+      }
+    ]
+  }
+}

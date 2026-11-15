@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
+  // Read at runtime by the API routes: recorded fixtures and learned marshal-sector positions.
+  outputFileTracingIncludes: {
+    "/api/**": ["./fixtures/openf1/**", "./data/**"],
+  },
   partialPrefetching: true,
   turbopack: {
     rules: {
