@@ -1,13 +1,15 @@
 import "server-only";
 
+import { accessToken, BASE, dropToken, openf1Credentials } from "./auth";
+
 /**
  * Server-side OpenF1 client. Historical data needs no credentials. Requests are spaced to stay
- * under the free tier's 3 per second and 30 per minute (per server instance), empty results
- * (HTTP 404 "No results found.") become empty arrays, and 429/5xx are retried with backoff.
+ * under the free tier's 3 per second and 30 per minute, or with an account (OPENF1_USERNAME and
+ * OPENF1_PASSWORD) its 6 and 60, per server instance. Empty results (HTTP 404 "No results
+ * found.") become empty arrays, and 429/5xx are retried with backoff.
  */
 
-const BASE = process.env.OPENF1_API_BASE ?? "https://api.openf1.org/v1";
-const MIN_GAP_MS = 2100;
+const MIN_GAP_MS = openf1Credentials() ? 1050 : 2100;
 let nextSlot = 0;
 
 export class TooMuchDataError extends Error {}
@@ -39,7 +41,12 @@ export async function openf1<T>(endpoint: string, params: Params = {}, attempts 
   const url = `${BASE}/${endpoint}?${query(params)}`;
   for (let attempt = 0; ; attempt++) {
     await slot();
-    const res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
+    const token = await accessToken();
+    const res = await fetch(url, { headers: { accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, cache: "no-store" });
+    if (res.status === 401 && token && attempt + 1 < attempts) {
+      dropToken(); // expired early or revoked: sign in again
+      continue;
+    }
     if (res.status === 404) return []; // OpenF1's way of saying "no rows"
     if (res.status === 422) throw new TooMuchDataError(`OpenF1 refused ${endpoint}: too much data in one request`);
     if (res.status === 429 || res.status >= 500) {

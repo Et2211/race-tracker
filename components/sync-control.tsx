@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { SyncPoint } from "@/lib/replay/sync";
 
 type Props = {
+  /** Live: the dashboard holds itself behind real time instead of jumping in a replay. */
+  live?: boolean;
   points: SyncPoint[];
   /** The point the replay was last synced to, while it still is. */
   synced: SyncPoint | null;
@@ -17,7 +19,7 @@ type Props = {
  * you will see on the video, press Now as it happens, and the replay jumps there and plays at
  * normal speed alongside it.
  */
-export function SyncControl({ points, synced, playing, onSync, onNudge }: Props) {
+export function SyncControl({ live = false, points, synced, playing, onSync, onNudge }: Props) {
   const [choice, setChoice] = useState<string>(points[0]?.id ?? "");
   if (points.length === 0) return null;
   const point = points.find((p) => p.id === choice) ?? points[0];
@@ -27,8 +29,17 @@ export function SyncControl({ points, synced, playing, onSync, onNudge }: Props)
       <summary className="tab">{synced ? "Synced to video" : "Sync to video"}</summary>
       <div className="sync-body">
         <p className="note" style={{ margin: 0 }}>
-          Watching a recording of the race in another window or in picture-in-picture? Pick a moment you will see on it,
-          press <strong>Now</strong> as it happens, and the replay jumps there and plays at normal speed alongside the video.
+          {live ? (
+            <>
+              Watching the race on NOW or another stream? Streams run 30–60 s behind real life. Pick a moment you will see on it,
+              press <strong>Now</strong> as it happens, and the dashboard holds itself that far behind so it never shows a move before your video does.
+            </>
+          ) : (
+            <>
+              Watching a recording of the race in another window or in picture-in-picture? Pick a moment you will see on it,
+              press <strong>Now</strong> as it happens, and the replay jumps there and plays at normal speed alongside the video.
+            </>
+          )}
         </p>
         <div className="sync-row">
           <label htmlFor="sync-point" className="muted" style={{ fontSize: 14 }}>Moment</label>
@@ -44,7 +55,7 @@ export function SyncControl({ points, synced, playing, onSync, onNudge }: Props)
               {playing ? "." : ": paused. Press Play here when you resume the video."}
             </span>
             <span className="sync-nudge">
-              <span className="muted" style={{ fontSize: 14 }}>Replay ahead of the video?</span>
+              <span className="muted" style={{ fontSize: 14 }}>{live ? "Dashboard" : "Replay"} ahead of the video?</span>
               <span className="segmented">
                 <button className="seg" onClick={() => onNudge(-5000)}>−5 s</button>
                 <button className="seg" onClick={() => onNudge(-500)}>−0.5 s</button>

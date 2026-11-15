@@ -60,7 +60,13 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
                           {SHORT[s.name] ?? s.name}
                         </Link>
                       ) : (
-                        <span key={s.sessionKey} className="chip-session" title={s.upcoming ? `${s.name}: not run yet` : `${s.name}: results not final yet`}>{SHORT[s.name] ?? s.name}</span>
+                        !s.upcoming && Date.parse(s.dateEnd) + 30 * 60_000 > data.now ? (
+                          <Link key={s.sessionKey} href={`/live/${s.sessionKey}`} className="chip-session link live-chip" title={`${s.name}: watch live`}>
+                            {SHORT[s.name] ?? s.name} · live
+                          </Link>
+                        ) : (
+                          <span key={s.sessionKey} className="chip-session" title={s.upcoming ? `${s.name}: not run yet` : `${s.name}: results not final yet`}>{SHORT[s.name] ?? s.name}</span>
+                        )
                       ),
                     )}
                   </div>

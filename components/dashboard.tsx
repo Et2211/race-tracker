@@ -5,6 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildSnapshot, buildStatic } from "@/lib/dashboard/snapshot";
 import type { CarDot } from "@/lib/dashboard/model";
 import { SPEEDS, useClock, useThrottled, type Speed } from "@/lib/replay/use-clock";
+import type { LiveStatusView } from "@/lib/live/http";
+import { useLiveClock } from "@/lib/replay/use-live-clock";
+import { useLiveSession } from "@/lib/replay/use-live";
 import { useSession } from "@/lib/replay/use-session";
 import { REACTION_MS, syncPoints, type SyncPoint } from "@/lib/replay/sync";
 import { jumpTargets } from "@/lib/replay/timeline";
@@ -14,17 +17,30 @@ import type { Phase } from "@/lib/timing/qualifying";
 import { toMap } from "@/lib/track/map";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
+import { LiveStatusLine } from "./live-status";
 import { SyncControl } from "./sync-control";
 import { WatchPanel } from "./watch-panel";
 import { SessionPicker } from "./session-picker";
 import { MarkLegend, QualifyingTable, RaceTable } from "./timing-tables";
 import { MapLegend, TrackMap } from "./track-map";
 
+type LoaderResult = ReturnType<typeof useSession> & { live?: { status: LiveStatusView | null } };
+
 export function SessionDashboard({ sessionKey, initialTime }: { sessionKey: number; initialTime: number | null }) {
   const [playhead, setPlayhead] = useState<number | null>(initialTime);
   const loader = useSession(sessionKey, playhead);
-  const { meta } = loader;
+  return <Shell loader={loader} sessionKey={sessionKey} initialTime={initialTime} onPlayhead={setPlayhead} mode="replay" />;
+}
 
+/** A session while it runs, from OpenF1's real-time feed (relayed and stored by the server). */
+export function LiveDashboard({ sessionKey }: { sessionKey: number }) {
+  const [playhead, setPlayhead] = useState<number | null>(null);
+  const loader = useLiveSession(sessionKey, playhead);
+  return <Shell loader={loader} sessionKey={sessionKey} initialTime={null} onPlayhead={setPlayhead} mode="live" />;
+}
+
+function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: LoaderResult; sessionKey: number; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
+  const { meta } = loader;
   if (!meta) {
     return (
       <div className="page">
@@ -33,13 +49,13 @@ export function SessionDashboard({ sessionKey, initialTime }: { sessionKey: numb
         <section className="panel" aria-live="polite">
           {loader.state.phase === "error" ? (
             <>
-              <h2>Could not load this session</h2>
+              <h2>{mode === "live" ? "Could not connect to the live session" : "Could not load this session"}</h2>
               <p className="note" role="alert">{loader.state.message}</p>
               <button className="tab" style={{ alignSelf: "flex-start" }} onClick={loader.retry}>Try again</button>
             </>
           ) : (
             <>
-              <h2>Loading session {sessionKey}</h2>
+              <h2>{mode === "live" ? `Connecting to session ${sessionKey}` : `Loading session ${sessionKey}`}</h2>
               <p className="note">{loader.state.phase === "meta" ? loader.state.message : ""}…</p>
               <progress aria-label="Loading session data" />
             </>
@@ -49,16 +65,19 @@ export function SessionDashboard({ sessionKey, initialTime }: { sessionKey: numb
       </div>
     );
   }
-  return <Loaded loader={loader} meta={meta} initialTime={initialTime} onPlayhead={setPlayhead} />;
+  return <Loaded loader={loader} meta={meta} initialTime={initialTime} onPlayhead={onPlayhead} mode={mode} />;
 }
 
-type LoaderResult = ReturnType<typeof useSession>;
-
-function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResult; meta: NonNullable<LoaderResult["meta"]>; initialTime: number | null; onPlayhead: (t: number) => void }) {
+function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: LoaderResult; meta: NonNullable<LoaderResult["meta"]>; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
   const view = useMemo(() => buildStatic(meta), [meta]);
   const targets = useMemo(() => jumpTargets(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
   const firstWindow = meta.source === "fixtures" ? meta.windows[0]?.from : null;
-  const clock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start));
+  const isLive = mode === "live";
+  const liveStatus = loader.live?.status ?? null;
+  const latest = liveStatus?.lastSecond !== null && liveStatus?.lastSecond !== undefined ? (liveStatus.lastSecond + 1) * 1000 : null;
+  const replayClock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start));
+  const liveClock = useLiveClock(latest, isLive);
+  const clock = isLive ? liveClock : replayClock;
   const sync = useMemo(() => syncPoints(meta.kind, meta.laps, meta.raceControl, meta.session.session_name), [meta]);
   // The point the replay was synced to; any move other than a nudge or play/pause ends the sync.
   const [synced, setSynced] = useState<SyncPoint | null>(null);
@@ -107,7 +126,6 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
     };
   }, [selected]);
   const [phaseChoice, setPhaseChoice] = useState<Phase | null>(null);
-  const [live, setLive] = useState(false);
   const qualifying = snapshot.qualifying;
   const phase = phaseChoice ?? qualifying?.current ?? qualifying?.phases.at(-1)?.phase ?? 1;
   const qPhase = qualifying?.phases.find((p) => p.phase === phase);
@@ -128,11 +146,11 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
           <Link href="/" className="back">← All sessions</Link>
           <div className="hd" style={{ color: "var(--red-text)" }}><Link href="/" className="home-link">Race weekend dashboard</Link></div>
           <h1>{meta.meeting.meeting_name}</h1>
-          <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year} · {meta.source === "fixtures" ? "recorded fixtures" : "OpenF1 historical data"}</p>
+          <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year} · {meta.source === "fixtures" ? "recorded fixtures" : isLive ? "OpenF1 live feed" : "OpenF1 historical data"}</p>
         </div>
         <div className="pills" aria-live="polite">
-          <span className="pill">{meta.source === "fixtures" ? "Fixture data" : "Replay"}</span>
-          {meta.kind === "race" ? <span className="pill">{snapshot.beforeStart ? "Before the start · grid and formation lap" : `Lap ${snapshot.lap} / ${view.totalLaps ?? "?"}`}</span> : currentTarget && <span className="pill">{currentTarget.label}</span>}
+          {isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <span className="pill">{meta.source === "fixtures" ? "Fixture data" : "Replay"}</span>}
+          {meta.kind === "race" ? <span className="pill">{snapshot.beforeStart ? "Before the start · grid and formation lap" : isLive ? `Lap ${snapshot.lap}` : `Lap ${snapshot.lap} / ${view.totalLaps ?? "?"}`}</span> : currentTarget && <span className="pill">{currentTarget.label}</span>}
           {snapshot.flags.map((f) => <span key={f.sector} className="pill flag">{f.flag} · Marshal sector {f.sector}</span>)}
           {snapshot.safetyCar && <span className="pill flag">{snapshot.safetyCar.kind === "VSC" ? "Virtual safety car" : "Safety car"}</span>}
           {snapshot.red && <span className="pill red">Red flag · session stopped</span>}
@@ -143,37 +161,32 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
       <main style={{ display: "contents" }}>
       <div className="toolbar" role="region" aria-label="Session and replay controls">
         <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={{ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }} />
-        <div role="group" aria-label="Data mode" className="segmented">
-          <button className="seg" aria-pressed={live} onClick={() => setLive(true)}>Live</button>
-          <button className="seg" aria-pressed={!live} onClick={() => setLive(false)}>Replay</button>
-        </div>
-        {live ? (
-          <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14 }}>
-            <span className="live-dot" /><strong style={{ fontWeight: 600 }}>Live</strong>
-            <span className="muted">needs OpenF1&apos;s paid tier, which is not set up. Showing the replay.</span>
-          </span>
-        ) : null}
+        <nav aria-label="Data mode" className="segmented">
+          {isLive ? <span className="seg" aria-current="page">Live</span> : <Link className="seg" href={`/live/${meta.session.session_key}`}>Live</Link>}
+          {isLive ? <Link className="seg" href={`/session/${meta.session.session_key}`}>Replay</Link> : <span className="seg" aria-current="page">Replay</span>}
+        </nav>
+        {isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} onCatchUp={liveClock.toTarget} />}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
           <button className="tab" onClick={() => clock.setPlaying(!clock.playing)} aria-label={clock.playing ? "Pause" : "Play"}>{clock.playing ? "Pause" : "Play"}</button>
-          <div role="group" aria-label="Playback speed" className="segmented">
+          {!isLive && <div role="group" aria-label="Playback speed" className="segmented">
             {SPEEDS.map((s) => (
               <button key={s} className="seg" style={{ padding: "0 12px" }} aria-pressed={clock.speed === s} onClick={() => {
                 if (s !== clock.speed) setSynced(null);
                 clock.setSpeed(s as Speed);
               }}>{s}×</button>
             ))}
-          </div>
+          </div>}
         </div>
         <div className="scrub">
           <label htmlFor="scrub">
-            {meta.kind === "race" ? (!snapshot.beforeStart ? <>Replay lap <strong>{snapshot.lap}</strong></> : <>Replay <strong>before the start</strong></>) : <>Replay <strong>{currentTarget?.label ?? "before the start"}</strong></>}
+            {isLive ? "Live " : "Replay "}{meta.kind === "race" ? (!snapshot.beforeStart ? <>lap <strong>{snapshot.lap}</strong></> : <strong>before the start</strong>) : <strong>{currentTarget?.label ?? "before the start"}</strong>}
             <span className="muted"> · {formatClock(t)} UTC</span>
           </label>
           <input
             id="scrub"
             type="range"
             min={0}
-            max={Math.round((span.end - span.start) / 1000)}
+            max={Math.max(0, Math.round(((isLive ? Math.max(latest ?? clock.t, clock.t) : span.end) - span.start) / 1000))}
             step={1}
             value={Math.round((t - span.start) / 1000)}
             onChange={(e) => seek(span.start + Number(e.target.value) * 1000)}
@@ -188,19 +201,24 @@ function Loaded({ loader, meta, initialTime, onPlayhead }: { loader: LoaderResul
           </select>
         </div>
         <SyncControl
+          live={isLive}
           points={sync}
           synced={synced}
           playing={clock.playing}
           onSync={(p) => {
             clock.seek(p.t + REACTION_MS);
+            if (isLive) liveClock.keepDelay(p.t + REACTION_MS);
             clock.setSpeed(1);
             clock.setPlaying(true);
             setSynced(p);
           }}
-          onNudge={(ms) => clock.seek(clock.t + ms)}
+          onNudge={(ms) => {
+            clock.seek(clock.t + ms);
+            if (isLive) liveClock.keepDelay(clock.t + ms);
+          }}
         />
         <div className="muted" style={{ fontSize: 13, flexBasis: "100%" }} aria-live="polite">
-          Car data {progress.ready} of {progress.total} parts loaded
+          {isLive ? <>Car data: {progress.ready} min received · retirements and the official classification appear once OpenF1 publishes results</> : <>Car data {progress.ready} of {progress.total} parts loaded</>}
           {meta.source === "fixtures" ? " (only short recorded windows exist in offline mode)" : ""}
           {progress.failed > 0 && (
             <> · <span style={{ color: "var(--red-text)" }}>download failed: {progress.error}</span> <button className="seg" onClick={loader.retryChunks}>Retry</button></>

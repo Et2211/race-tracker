@@ -34,6 +34,8 @@ interface SessionIndex {
   complete(): Promise<Set<number>>;
   /** Bytes stored for sessions, the cap, and how many sessions are complete. */
   usage(): Promise<StorageUsage>;
+  /** Stored sessions at a circuit, newest first (for a live session's outline). */
+  atCircuit(circuitKey: number): Promise<number[]>;
 }
 
 export type StorageUsage = { bytes: number; capBytes: number; sessions: number };
@@ -72,6 +74,11 @@ class SupabaseIndex implements SessionIndex {
     const { data, error } = await supabase().from("stored_sessions").select("bytes, windows, windows_stored");
     if (error) throw error;
     return { bytes: data.reduce((s, r) => s + Number(r.bytes), 0), capBytes: CAP_BYTES, sessions: data.filter((r) => r.windows_stored >= r.windows).length };
+  }
+  async atCircuit(circuitKey: number) {
+    const { data, error } = await supabase().from("stored_sessions").select("session_key").eq("circuit_key", circuitKey).order("year", { ascending: false }).order("session_key", { ascending: false }).limit(6);
+    if (error) throw error;
+    return data.map((r) => r.session_key as number);
   }
 }
 
@@ -127,6 +134,15 @@ class DiskIndex implements SessionIndex {
     const m = await this.load();
     const all = Object.values(m.sessions);
     return { bytes: all.reduce((s, x) => s + x.bytes, 0), capBytes: CAP_BYTES, sessions: all.filter((s) => s.windows > 0 && s.windowsStored >= s.windows).length };
+  }
+  async atCircuit(circuitKey: number) {
+    const m = await this.load();
+    const found: { key: number; year: number }[] = [];
+    for (const key of Object.keys(m.sessions)) {
+      const meta = await readJson<{ session: { circuit_key: number; year: number } }>(`sessions/${key}/meta.json`);
+      if (meta?.session.circuit_key === circuitKey) found.push({ key: Number(key), year: meta.session.year });
+    }
+    return found.sort((a, b) => b.year - a.year || b.key - a.key).map((f) => f.key);
   }
 }
 

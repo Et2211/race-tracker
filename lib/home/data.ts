@@ -29,6 +29,8 @@ export type Progression = {
 
 export type HomeData = {
   year: number;
+  /** When this was worked out (cached for a few minutes), for "live now" marks. */
+  now: number;
   source: "openf1" | "fixtures";
   meetings: HomeMeeting[];
   next: { meeting: HomeMeeting; session: CatalogSession } | null;
@@ -147,5 +149,5 @@ export async function getHomeData(year: number): Promise<HomeData> {
   }
 
   const storage = catalog.source === "openf1" ? await sessionIndex().usage().catch(() => null) : null;
-  return { year, source: catalog.source, meetings, next, latest, standings, progression, storage };
+  return { year, now, source: catalog.source, meetings, next, latest, standings, progression, storage };
 }

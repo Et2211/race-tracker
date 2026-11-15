@@ -49,7 +49,8 @@ export type SessionMeta = {
   windows: { index: number; from: number; to: number }[];
   /** For races: the meeting's qualifying (or sprint qualifying) session. */
   qualifying: QualifyingTiming | null;
-  source: "openf1" | "fixtures";
+  /** "live": assembled from OpenF1's real-time feed while the session runs; it grows. */
+  source: "openf1" | "fixtures" | "live";
 };
 
 /**
