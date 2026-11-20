@@ -35,6 +35,12 @@ export const isPractice = (s: { session_type?: string; type?: string }) => (s.se
 
 /** OpenF1 keeps adding results and pit data for a few hours after a session ends. */
 export const SETTLE_MS = 3 * 60 * 60_000;
+/**
+ * When a session's replay opens, after its end. Stored sessions wait until OpenF1 has settled, so
+ * what is kept is complete. Practice is never stored (rebuilt from OpenF1 on every opening), so
+ * nothing is gained by waiting: it opens when live coverage stops, 30 minutes after the end.
+ */
+export const replayAfter = (practice: boolean) => (practice ? 30 * 60_000 : SETTLE_MS);
 
 /** A season's meetings and sessions as the picker and homepage list them (practice included, live only). */
 export function buildCatalog(year: number, meetings: Meeting[], sessions: Session[], source: Catalog["source"]): Catalog {
@@ -68,7 +74,7 @@ export function withStatus(catalog: Catalog, isDownloaded: (sessionKey: number) 
   for (const m of catalog.meetings) {
     for (const s of m.sessions) {
       s.upcoming = Date.parse(s.dateStart) > now;
-      s.available = Date.parse(s.dateEnd) + SETTLE_MS < now;
+      s.available = Date.parse(s.dateEnd) + replayAfter(isPractice(s)) < now;
       s.downloaded = isDownloaded(s.sessionKey);
     }
   }

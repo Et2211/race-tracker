@@ -20,6 +20,9 @@ import { toMap } from "@/lib/track/map";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
 import { QualifyingClockPill, WatchLiveButton } from "./session-clock";
+import { replayAfter } from "@/lib/session/catalog";
+import { scrubTrack } from "@/lib/replay/scrub-track";
+import { FinishedLine, NotLivePanel } from "./live-ended";
 import { LiveStatusLine } from "./live-status";
 import { SyncControl } from "./sync-control";
 import { WatchPanel } from "./watch-panel";
@@ -37,25 +40,27 @@ type LoaderResult = ReturnType<typeof useSession> & { live?: { status: LiveStatu
 export function SessionDashboard({ sessionKey, initialTime }: { sessionKey: number; initialTime: number | null }) {
   const [playhead, setPlayhead] = useState<number | null>(initialTime);
   const loader = useSession(sessionKey, playhead);
-  return <Shell loader={loader} initialTime={initialTime} onPlayhead={setPlayhead} mode="replay" />;
+  return <Shell loader={loader} sessionKey={sessionKey} initialTime={initialTime} onPlayhead={setPlayhead} mode="replay" />;
 }
 
 /** A session while it runs, from OpenF1's real-time feed (relayed and stored by the server). */
 export function LiveDashboard({ sessionKey }: { sessionKey: number }) {
   const [playhead, setPlayhead] = useState<number | null>(null);
   const loader = useLiveSession(sessionKey, playhead);
-  return <Shell loader={loader} initialTime={null} onPlayhead={setPlayhead} mode="live" />;
+  return <Shell loader={loader} sessionKey={sessionKey} initialTime={null} onPlayhead={setPlayhead} mode="live" />;
 }
 
-function Shell({ loader, initialTime, onPlayhead, mode }: { loader: LoaderResult; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
+function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: LoaderResult; sessionKey: number; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
   const { meta } = loader;
   if (!meta) {
     return (
       <div className="page">
         <main className="page-main">
-        {mode === "replay" && <div className="toolbar"><SessionPicker label="Choose a session" /></div>}
+        <Link href="/" className="back">← All sessions</Link>
         <section className="panel" aria-live="polite">
-          {loader.state.phase === "error" ? (
+          {loader.state.phase === "error" && loader.state.notLive ? (
+            <NotLivePanel why={loader.state.notLive} sessionKey={sessionKey} onRetry={loader.retry} />
+          ) : loader.state.phase === "error" ? (
             <>
               <h2>{mode === "live" ? "Could not connect to the live session" : "Could not load this session"}</h2>
               <p className="note" role="alert">{loader.state.message}</p>
@@ -88,6 +93,9 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
   const isLive = mode === "live";
   const liveStatus = loader.live?.status ?? null;
   const latest = liveStatus?.lastSecond !== null && liveStatus?.lastSecond !== undefined ? (liveStatus.lastSecond + 1) * 1000 : null;
+  // Over: past its scheduled end, and the relays have stopped (30 minutes after it, by then).
+  const sessionEnd = Date.parse(meta.session.date_end);
+  const finished = isLive && liveStatus !== null && liveStatus.relaysAlive === 0 && liveStatus.now > sessionEnd;
   const quiet = useMemo(() => (meta.kind === "qualifying" ? quietStretches(meta.raceControl, meta.laps) : []), [meta.kind, meta.raceControl, meta.laps]);
   const [skipBreaks, setSkipBreaks] = useState(true);
   const replayClock = useClock(meta.span, initialTime ?? (firstWindow ? firstWindow + 15_000 : meta.span.start), skipBreaks ? quiet : NO_QUIET);
@@ -154,6 +162,9 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
   const year = meta.session.year;
   const progress = loader.progress;
   const span = meta.span;
+  const scrubEnd = isLive ? Math.max(latest ?? clock.t, clock.t) : span.end;
+  // The index fills in place; `version` changes as it does.
+  const loadedRanges = useMemo(() => telemetry.ranges(), [telemetry, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickerCurrent = useMemo(() => ({ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }), [year, meta.meeting.meeting_key, meta.session.session_key]);
   const qClock = meta.kind === "qualifying" ? qualifyingClock(meta.raceControl, slowT, prefix === "SQ", year) : null;
   // Screen readers hear the position when it changes meaningfully, not every second of playback.
@@ -169,7 +180,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year}</p>
         </div>
         <div className="pills" aria-live="polite">
-          {isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <WatchLiveButton session={meta.session} />}
+          {finished ? <span className="pill">Finished</span> : isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <WatchLiveButton session={meta.session} />}
           {meta.kind === "race" ? <span className="pill">{snapshot.beforeStart ? "Before the start · grid and formation lap" : isLive ? `Lap ${snapshot.lap}` : `Lap ${snapshot.lap} / ${view.totalLaps ?? "?"}`}</span> : currentTarget && <span className="pill">{currentTarget.label}</span>}
           {snapshot.flags.map((f) => <span key={f.sector} className="pill flag">{f.flag} · Marshal sector {f.sector}</span>)}
           {snapshot.safetyCar && <span className="pill flag">{snapshot.safetyCar.kind === "VSC" ? "Virtual safety car" : "Safety car"}</span>}
@@ -182,7 +193,11 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
       <div className="toolbar" role="region" aria-label="Session and replay controls">
         <div className="toolbar-row">
           {!isLive && <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={pickerCurrent} />}
-          {isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} following={liveClock.following} onCatchUp={liveClock.toTarget} />}
+          {finished ? (
+            <FinishedLine sessionKey={meta.session.session_key} replayAt={sessionEnd + replayAfter(meta.kind === "practice")} />
+          ) : (
+            isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} following={liveClock.following} onCatchUp={liveClock.toTarget} />
+          )}
           {qClock && <QualifyingClockPill clock={qClock} prefix={prefix} live={isLive} t={slowT} />}
           <span className="toolbar-spacer" />
           <SyncControl
@@ -244,10 +259,11 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
         </div>
         <input
           className="scrubber"
+          style={{ "--scrub-bg": scrubTrack(loadedRanges, span.start, scrubEnd, t) } as React.CSSProperties}
           type="range"
           aria-label="Session time"
           min={0}
-          max={Math.max(0, Math.round(((isLive ? Math.max(latest ?? clock.t, clock.t) : span.end) - span.start) / 1000))}
+          max={Math.max(0, Math.round((scrubEnd - span.start) / 1000))}
           step={1}
           value={Math.round((t - span.start) / 1000)}
           onChange={(e) => seek(span.start + Number(e.target.value) * 1000)}

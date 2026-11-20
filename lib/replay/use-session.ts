@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TelemetryIndex } from "@/lib/session/telemetry";
 import { DATA_FORMAT, type SessionMeta, type TelemetryChunk } from "@/lib/session/types";
+import type { NotLive } from "@/lib/live/not-live";
 
-export type LoadState = { phase: "meta"; message: string } | { phase: "error"; message: string } | { phase: "ready" };
+/** `notLive`: a live session that could not be opened, and why (not started, or ended). */
+export type LoadState = { phase: "meta"; message: string } | { phase: "error"; message: string; notLive?: NotLive } | { phase: "ready" };
 
 type ChunkStatus = "missing" | "ready" | "failed";
 

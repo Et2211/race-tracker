@@ -9,7 +9,7 @@ export type LiveRowRead = { topic: string; key: string; payload: Record<string, 
 export type LiveStatus = { firstSecond: number | null; lastSecond: number | null; lastRev: number; lastBucketRev: number; relaysAlive: number; lastSeen: string | null };
 export type LiveBucketRead = { second: number; data: string; rev: number };
 export type Heartbeat = { relayId: string; sessionKey: number; subscribedAt: string | null; messages: number; note?: string | null };
-export type CalendarSession = { session_key: number; session_name: string; meeting_name: string; date_start: string; date_end: string };
+export type CalendarSession = { session_key: number; session_name: string; meeting_name: string; date_start: string; date_end: string; live_only?: boolean };
 
 /** Rows per read. Supabase returns at most 1,000 rows from a function call, so pages are that size. */
 export const LIVE_PAGE = 1000;
@@ -26,6 +26,8 @@ export interface LiveStore {
   heartbeat(beat: Heartbeat): Promise<void>;
   /** The scheduled session running now (±margins), from the calendar; null without one. */
   sessionNow(): Promise<CalendarSession | null>;
+  /** One session from the calendar, on now or not; null if the calendar does not have it. */
+  session(sessionKey: number): Promise<CalendarSession | null>;
   clear(sessionKey: number): Promise<void>;
 }
 
@@ -75,6 +77,15 @@ class SupabaseLiveStore implements LiveStore {
   async sessionNow() {
     const rows = await this.rpc<CalendarSession[]>("live_session_now", {});
     return rows[0] ?? null;
+  }
+  async session(sessionKey: number) {
+    const { data, error } = await supabase()
+      .from("session_calendar")
+      .select("session_key, session_name, meeting_name, date_start, date_end, live_only")
+      .eq("session_key", sessionKey)
+      .maybeSingle();
+    if (error) throw new Error(`session_calendar: ${error.message}`);
+    return (data as CalendarSession | null) ?? null;
   }
   async clear(sessionKey: number) {
     await this.rpc<void>("live_clear", { p_session_key: sessionKey });
@@ -156,6 +167,9 @@ class MemoryLiveStore implements LiveStore {
   }
   async sessionNow() {
     return null; // no calendar without Supabase; start relays with ?session=<key>
+  }
+  async session() {
+    return null;
   }
   async clear(sessionKey: number) {
     for (const [id, r] of this.rows) if (r.sessionKey === sessionKey) this.rows.delete(id);

@@ -10,7 +10,7 @@ import { readJson, writeJson } from "@/lib/storage/store";
 import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type LearnedSectors } from "./assemble";
-import { SETTLE_MS } from "./catalog";
+import { replayAfter } from "./catalog";
 import { circuitShape, summarize, type CircuitShape } from "./summary";
 import { encodeChunk } from "./telemetry";
 import { sessionKind, type SessionMeta, type TelemetryChunk } from "./types";
@@ -160,8 +160,8 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   if (!session) throw new Error(`OpenF1 has no session ${sessionKey}`);
   // Practice is built and sent, never stored: no space reserved, nothing written or counted.
   const keep = sessionKind(session) !== "practice";
-  if (Date.parse(session.date_end) + SETTLE_MS > Date.now()) {
-    throw new NotReadyError("This session ended less than three hours ago. OpenF1 is still adding results; try again later.");
+  if (Date.parse(session.date_end) + replayAfter(!keep) > Date.now()) {
+    throw new NotReadyError(`This session's replay opens ${keep ? "three hours" : "30 minutes"} after it ends, once OpenF1 has its results. Try again then.`);
   }
   // Check the storage cap before spending any more requests; size estimated from the schedule.
   const [meeting] = await openf1<Meeting>("meetings", { meeting_key: session.meeting_key });
