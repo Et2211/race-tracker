@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { liveAllowed, liveContext, noStore, statusView } from "@/lib/live/http";
+import { liveAllowed, liveContext, noStore, statusView, whyNotLive } from "@/lib/live/http";
 import { liveMeta } from "@/lib/live/meta";
 import { openf1Credentials } from "@/lib/openf1/auth";
 import { errorJson } from "@/lib/session/http";
@@ -13,7 +13,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/live/[key]">) {
   if (!live) return Response.json({ error: "Not a session" }, { status: 404 });
   if (!openf1Credentials()) return Response.json({ error: "Live timing isn't available right now. Replays of past sessions still work.", code: "not-configured" }, { status: 503, headers: noStore });
   if (!(await liveAllowed(live.sessionKey))) {
-    return Response.json({ error: "This session isn't live right now. Past sessions open as replays.", code: "not-live" }, { status: 404, headers: noStore });
+    const why = await whyNotLive(live.sessionKey);
+    const error = why.code === "upcoming" ? "This session hasn't started yet." : why.code === "ended" ? "This session has ended." : "This session isn't live right now.";
+    return Response.json({ error, ...why }, { status: 404, headers: noStore });
   }
   try {
     const [{ meta, rev }, status] = await Promise.all([liveMeta(live.store, live.sessionKey), statusView(live.sessionKey)]);

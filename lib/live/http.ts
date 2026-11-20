@@ -1,8 +1,14 @@
 import "server-only";
 import { openf1Credentials } from "@/lib/openf1/auth";
+import { notLiveReason, type NotLive } from "./not-live";
 import { liveStore, type LiveStatus } from "./store";
 
 export type LiveStatusView = LiveStatus & { configured: boolean; now: number };
+
+/** Why a session cannot be opened live (not started, or ended), from the calendar. */
+export async function whyNotLive(sessionKey: number, now = Date.now()): Promise<NotLive> {
+  return notLiveReason(await liveStore().session(sessionKey).catch(() => null), now);
+}
 
 /** Live endpoints: the session key from the URL, and the store; 404 for anything that is not a key. */
 export async function liveContext(params: Promise<{ key: string }>) {

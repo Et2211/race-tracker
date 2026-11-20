@@ -2,17 +2,29 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LiveStatusView } from "@/lib/live/http";
+import type { NotLive } from "@/lib/live/not-live";
 import { mergeLiveRows, type LiveRow } from "@/lib/live/merge";
 import { TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta, TelemetryChunk } from "@/lib/session/types";
 import type { LoadState } from "./use-session";
 
+/** An error response, with its body (the reason a session is not live, for one). */
+class HttpError extends Error {
+  constructor(message: string, readonly body: Record<string, unknown> | null) {
+    super(message);
+  }
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw new HttpError(body?.error ?? `HTTP ${res.status}`, body);
   return body as T;
 }
+
+const NOT_LIVE_CODES = new Set(["upcoming", "ended", "not-live"]);
+const notLiveOf = (e: unknown): NotLive | undefined =>
+  e instanceof HttpError && NOT_LIVE_CODES.has(String(e.body?.code)) ? (e.body as unknown as NotLive) : undefined;
 
 const POLL_MS = 1000;
 /** Seconds of car data loaded on opening, and per step when scrolling back. */
@@ -74,7 +86,7 @@ export function useLiveSession(sessionKey: number, playhead: number | null) {
         setState({ phase: "ready" });
         timer = setTimeout(poll, POLL_MS);
       } catch (e) {
-        if (!stopped) setState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+        if (!stopped) setState({ phase: "error", message: e instanceof Error ? e.message : String(e), notLive: notLiveOf(e) });
       }
     })();
     return () => {
