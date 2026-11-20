@@ -1,22 +1,27 @@
 import "server-only";
+import { gunzip } from "node:zlib";
+import { promisify } from "node:util";
 import { DownloadBusyError } from "@/lib/storage/download-lock";
 import { StorageFullError } from "@/lib/storage/session-index";
 import { NotReadyError } from "./ingest";
 import { RateLimitedError } from "@/lib/openf1/client";
 
+const gunzipAsync = promisify(gunzip);
+
 /**
- * Serve stored gzipped JSON as-is; the browser decompresses it. Responses are public, so Vercel's
+ * Serve stored gzipped JSON, unpacked: the platform compresses responses for the wire itself.
+ * (Next.js 16.4.6 drops a route's own content-encoding header, so gzip bytes sent as they are
+ * would reach the browser as unreadable JSON.) Responses are public, so Vercel's
  * CDN can serve repeat requests without reading Supabase again (the data is public anyway).
  *  - Telemetry windows never change: a year, everywhere.
  *  - Metadata can be rewritten (learned marshal sectors, a backfill): 5 minutes in the browser, an
  *    hour at the CDN, then served stale while refreshed.
  * URLs carry the data format version, so a format change never reads a stale copy.
  */
-export function gzipJson(body: Buffer, cache: "meta" | "immutable"): Response {
-  return new Response(new Uint8Array(body), {
+export async function storedJson(body: Buffer, cache: "meta" | "immutable"): Promise<Response> {
+  return new Response(new Uint8Array(await gunzipAsync(body)), {
     headers: {
       "content-type": "application/json",
-      "content-encoding": "gzip",
       "cache-control": cache === "immutable" ? "public, max-age=31536000, s-maxage=31536000, immutable" : "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
     },
   });
