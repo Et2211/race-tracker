@@ -12,8 +12,13 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/sessions/[key]/
   const i = /^\d{1,3}$/.test(index) ? Number(index) : null;
   if (k === null || i === null) return badRequest("Bad request");
   try {
-    const raw = (await storedChunk(k, i)) ?? gzipSync(JSON.stringify(await ensureChunk(k, i)));
-    return await storedJson(raw, "immutable");
+    const stored = await storedChunk(k, i);
+    const raw = stored ?? gzipSync(JSON.stringify(await ensureChunk(k, i)));
+    const res = await storedJson(raw, "immutable");
+    // Where it came from, so the browser knows whether asking for several at once is cheap
+    // (stored) or would queue behind OpenF1's rate limit (downloaded just now).
+    res.headers.set("x-data-source", stored ? "store" : "openf1");
+    return res;
   } catch (e) {
     return errorJson(e);
   }

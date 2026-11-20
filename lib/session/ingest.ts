@@ -264,8 +264,11 @@ async function downloadWindow(meta: SessionMeta, index: number): Promise<Telemet
   if (existing) return existing;
   const w = meta.windows[index];
   if (!w) throw new Error(`No window ${index}`);
-  const location = await fetchRange<LocationRow>("location", meta.session.session_key, w.from, w.to);
-  const carData = await fetchRange<CarDataRow>("car_data", meta.session.session_key, w.from, w.to);
+  // Both at once: OpenF1 takes seconds to answer each, and the shared schedule keeps the pace.
+  const [location, carData] = await Promise.all([
+    fetchRange<LocationRow>("location", meta.session.session_key, w.from, w.to),
+    fetchRange<CarDataRow>("car_data", meta.session.session_key, w.from, w.to),
+  ]);
   const chunk = encodeChunk(index, w.from, w.to, location, carData);
   if (!keep) return chunk;
   const bytes = await writeJson(key, chunk);

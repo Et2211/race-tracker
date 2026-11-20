@@ -233,3 +233,19 @@ test("the live page says live data is not set up when the server has no OpenF1 a
   await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Watch live" })).toHaveCount(0);
 });
+
+test("a part that fails for a moment is fetched again by itself", async ({ page }) => {
+  let failed = 0;
+  // The first request for each telemetry part gets "busy, try again in 1 s"; later ones go through.
+  await page.route(/\/api\/sessions\/11369\/chunks\/\d+/, async (route) => {
+    if (failed < 2) {
+      failed++;
+      return route.fulfill({ status: 503, headers: { "retry-after": "1" }, contentType: "application/json", body: JSON.stringify({ error: "Busy", code: "busy" }) });
+    }
+    return route.continue();
+  });
+  await page.goto("/session/11369");
+  await loaded(page);
+  expect(failed).toBe(2);
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+});
