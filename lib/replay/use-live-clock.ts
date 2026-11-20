@@ -21,15 +21,16 @@ export function liveTime(now: number, delay: number, latest: number | null, paus
  * The delay to use from now on, `elapsed` ms after the last frame:
  *  - more, if the clock has caught up with the newest data (data arrives once a second, so a
  *    clock pinned to it would jump once a second; a little margin keeps it moving between polls);
- *  - less, while following live, if it has fallen further behind than that margin (a burst of
- *    data, a slow poll): it catches up at 1.5× speed rather than jumping;
- *  - otherwise unchanged (synced to a stream, or scrolled back: the viewer chose that delay).
+ *  - less, if it is further behind than `goal` (0 while following live, the synced delay while
+ *    synced to a stream), at 1.5x speed rather than a jump; never closer to the data than the margin;
+ *  - otherwise unchanged (`goal` null: scrolled back or resumed after a pause, the viewer chose it).
  */
-export function smoothedDelay(now: number, delay: number, latest: number | null, elapsed = 0, following = false): number {
+export function smoothedDelay(now: number, delay: number, latest: number | null, elapsed = 0, goal: number | null = null): number {
   if (latest === null) return delay;
-  if (now - delay > latest) return now - latest + SMOOTH_MS;
-  if (following) {
-    const excess = latest - (now - delay) - SMOOTH_MS;
+  const floor = now - latest + SMOOTH_MS; // the smallest delay that keeps the margin
+  if (now - delay > latest) return floor;
+  if (goal !== null) {
+    const excess = delay - Math.max(goal, floor);
     if (excess > 250) return delay - Math.min(excess, elapsed * 0.5);
   }
   return delay;
@@ -50,14 +51,18 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
   const [delay, setDelay] = useState(0);
   const [target, setTarget] = useState<number | null>(null); // the synced delay, if any
   const [pausedAt, setPausedAt] = useState<number | null>(null);
-  // Following the newest data (not synced to a stream, not scrolled back).
+  // Following the newest data (not synced to a stream, not scrolled back, not resumed after a pause).
   const [following, setFollowing] = useState(true);
+  // Holding the synced delay (synced to a stream and not scrolled away since).
+  const [holding, setHolding] = useState(false);
+  // The delay the clock works its way back to after falling behind; null: none, stay where it is.
+  const goal = following ? 0 : holding ? target : null;
   const latestRef = useRef(latest);
-  const followingRef = useRef(following);
+  const goalRef = useRef(goal);
   useEffect(() => {
     latestRef.current = latest;
-    followingRef.current = following;
-  }, [latest, following]);
+    goalRef.current = goal;
+  }, [latest, goal]);
 
   // Every frame while running; nothing to animate while paused.
   useEffect(() => {
@@ -69,7 +74,7 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
       const elapsed = wall - last;
       last = wall;
       setNow(wall);
-      setDelay((d) => smoothedDelay(wall, d, latestRef.current, elapsed, followingRef.current));
+      setDelay((d) => smoothedDelay(wall, d, latestRef.current, elapsed, goalRef.current));
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -81,6 +86,7 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
   const seek = useCallback(
     (to: number) => {
       setFollowing(false);
+      setHolding(false);
       if (pausedAt !== null) setPausedAt(to);
       else setDelay(Math.max(0, Date.now() - to));
     },
@@ -90,16 +96,22 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
     (playing: boolean) => {
       if (!playing && pausedAt === null) setPausedAt(t);
       if (playing && pausedAt !== null) {
-        setDelay(Math.max(0, Date.now() - pausedAt));
+        // Resume as far behind as the pause left it: never race to catch up (a video paused
+        // alongside would fall out of step). Synced, the new delay becomes the one to hold.
+        const d = Math.max(0, Date.now() - pausedAt);
+        setDelay(d);
         setPausedAt(null);
+        setFollowing(false);
+        if (holding) setTarget(d);
       }
     },
-    [pausedAt, t],
+    [pausedAt, t, holding],
   );
   /** Show session time `to` now, running, and remember the delay to come back to. */
   const syncTo = useCallback((to: number) => {
     const d = Math.max(0, Date.now() - to);
     setFollowing(false);
+    setHolding(true);
     setPausedAt(null);
     setDelay(d);
     setTarget(d);
@@ -117,6 +129,7 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
     setPausedAt(null);
     setDelay(target ?? 0);
     setFollowing(target === null);
+    setHolding(target !== null);
   }, [target]);
 
   return {
