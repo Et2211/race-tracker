@@ -7,6 +7,8 @@ import type { Speed } from "./use-clock";
 export const LIVE_EDGE_MS = 3000;
 /** Extra margin kept when the clock catches up with the data, so it moves smoothly between polls. */
 const SMOOTH_MS = 1000;
+/** How long to wait for fresh data after the tab comes back before trusting what there is. */
+const RESUME_WAIT_MS = 10_000;
 
 /**
  * The time a live clock shows: real time minus the delay, never past the newest data received.
@@ -64,21 +66,38 @@ export function useLiveClock(newest: number | null, enabled: boolean) {
     goalRef.current = goal;
   }, [latest, goal]);
 
-  // Every frame while running; nothing to animate while paused.
+  // Every frame while running; nothing to animate while paused. While the tab is hidden, frames
+  // stop and so does polling: coming back, the data on hand is minutes old until the next poll.
+  // The delay is left alone until fresh data arrives, or the clock would take the time away as
+  // the feed falling behind and add it to the delay (then crawl back at 1.5x, or never).
   useEffect(() => {
     if (!enabled || pausedAt !== null) return;
     let frame = 0;
     let last = Date.now();
+    let resumed: { at: number; latest: number | null } | null = null;
+    const onVisible = () => {
+      if (!document.hidden) resumed = { at: Date.now(), latest: latestRef.current };
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const tick = () => {
       const wall = Date.now();
       const elapsed = wall - last;
       last = wall;
       setNow(wall);
-      setDelay((d) => smoothedDelay(wall, d, latestRef.current, elapsed, goalRef.current));
+      const latest = latestRef.current;
+      if (resumed !== null && latest === resumed.latest && wall - resumed.at < RESUME_WAIT_MS) {
+        frame = requestAnimationFrame(tick); // still waiting for the data missed while away
+        return;
+      }
+      resumed = null;
+      setDelay((d) => smoothedDelay(wall, d, latest, elapsed, goalRef.current));
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [enabled, pausedAt]);
 
   const t = now === null ? (pausedAt ?? latest ?? 0) : liveTime(now, delay, latest, pausedAt);

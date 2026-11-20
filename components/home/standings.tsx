@@ -7,7 +7,7 @@ export function Standings({ standings }: { standings: NonNullable<HomeData["stan
     <section className="panel" aria-labelledby="standings-title">
       <div>
         <h2 id="standings-title">Championship</h2>
-        <p className="lede">After the {standings.after}. From OpenF1&apos;s championship data, which OpenF1 marks as beta.</p>
+        <p className="lede">After the {standings.after}.</p>
       </div>
       <div className="standings">
         <div className="scroll" tabIndex={0} role="region" aria-label="Drivers' championship">

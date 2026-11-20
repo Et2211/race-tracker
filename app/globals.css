@@ -250,8 +250,6 @@ a:focus-visible {
 .chart-wrap > svg { min-width: 560px; }
 .tooltip { position: absolute; top: 8px; transform: translateX(-50%); background: var(--inset); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; min-width: 130px; pointer-events: none; font-size: 13px; }
 .tooltip-row { display: flex; align-items: center; gap: 6px; font-family: var(--cond); font-weight: 700; font-size: 15px; }
-.gauge { height: 10px; background: var(--inset); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
-.gauge div { height: 100%; background: linear-gradient(90deg, var(--s1), var(--s2)); }
 .home-link { color: inherit; text-decoration: none; }
 .home-link:hover { text-decoration: underline; }
 .back { color: var(--muted); font-size: 14px; text-decoration: none; display: inline-block; margin-bottom: 6px; }
@@ -271,7 +269,6 @@ a:focus-visible {
 .hero-num { font-family: var(--mono); font-size: 0.5em; font-weight: 600; color: var(--muted); vertical-align: middle; }
 .hero-figure { margin: 0; position: relative; }
 .round-figure { position: relative; }
-.layout-note { position: absolute; right: 0; bottom: 0; font-size: 12px; color: var(--muted); }
 
 /* --- Worth watching (race replay) ---------------------------------------- */
 .watch { gap: 10px; }

@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { FlagView, Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 
-const sectorList = (f: FlagView) => (f.alsoSectors.length ? ` (also shown in sector ${f.alsoSectors.join(", ")})` : "");
+const sectorList = (f: FlagView) => (f.alsoSectors.length ? `Also shown in sector ${f.alsoSectors.join(", ")}.` : "");
 
 function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
   return (
@@ -13,12 +13,13 @@ function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
       </div>
       <div>
         <div className="big">Marshal sector {flag.sector}</div>
-        <p className="note" style={{ marginTop: 4 }}>
-          {flag.placement.known ? flag.placement.basis : `${flag.placement.reason} Nothing is highlighted on the map.`}
-          {sectorList(flag)}
-        </p>
+        {(!flag.placement.known || flag.alsoSectors.length > 0) && (
+          <p className="note" style={{ marginTop: 4 }}>
+            {[flag.placement.known ? "" : "Not shown on the map.", sectorList(flag)].filter(Boolean).join(" ")}
+          </p>
+        )}
         {flag.staleMinutes !== null && (
-          <p className="note" style={{ color: "var(--yellow)", marginTop: 4 }}>No clear message received for {flag.staleMinutes} minutes. The feed sometimes omits it, so this flag may already be over.</p>
+          <p className="note" style={{ color: "var(--yellow)", marginTop: 4 }}>No all-clear for {flag.staleMinutes} minutes: this flag may already be over.</p>
         )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -57,7 +58,7 @@ function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
           {flag.stopped.length > 0 && <span className="note" style={{ flex: "1 1 200px" }}>{flag.confidenceNote}</span>}
         </div>
       </div>
-      <p className="note">Calculated from car speed and position, not reported by the stewards. It shows who stopped or was involved, not who was at fault.</p>
+      <p className="note">Estimated from car data, not from the stewards. Says who stopped, not who was at fault.</p>
     </section>
   );
 }
@@ -77,9 +78,6 @@ export const FlagPanels = memo(function FlagPanels({ view, snapshot }: { view: S
         <section className="panel alert">
           <span className="badge">{sc.kind === "VSC" ? "VIRTUAL SAFETY CAR" : "SAFETY CAR"}{sc.ending ? " · ENDING" : ""}</span>
           <div className="big">Whole track under caution</div>
-          <p className="note" style={{ fontSize: 14 }}>
-            {sc.kind === "VSC" ? "Every car holds a reduced speed, so gaps stay roughly as they were." : "The field bunches up behind the safety car, so gaps close."} Sector flags can still be active alongside it.
-          </p>
         </section>
       )}
       {snapshot.flags.map((f) => <FlagPanel key={f.sector} flag={f} view={view} />)}
@@ -87,7 +85,6 @@ export const FlagPanels = memo(function FlagPanels({ view, snapshot }: { view: S
         <section className="panel">
           <span className="badge outline">TRACK CLEAR</span>
           <div className="big">No active flags</div>
-          <p className="note" style={{ fontSize: 14 }}>When a flag is shown, the marshal sector is named here, highlighted on the map where its position is known, and any cars that stopped are listed.</p>
         </section>
       )}
       <section className="panel" style={{ flex: 1 }}>

@@ -87,7 +87,7 @@ export const SessionPicker = memo(function SessionPicker({ label, current }: { l
                   : !s.available
                     ? " · results not final yet"
                     : s.notStored
-                      ? " · loads from OpenF1, about 30 s"
+                      ? " · takes about 30 s to load"
                       : s.downloaded
                         ? " · downloaded"
                         : " · downloads in about 1½ min"}

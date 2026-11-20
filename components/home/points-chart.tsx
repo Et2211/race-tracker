@@ -114,7 +114,6 @@ export function PointsChart({ progression, year }: { progression: Progression; y
           </table>
         </div>
       </details>
-      {progression.missing > 0 && <p className="note">{progression.missing} round{progression.missing > 1 ? "s are" : " is"} not drawn yet: their standings are fetched by the daily calendar job.</p>}
     </section>
   );
 }

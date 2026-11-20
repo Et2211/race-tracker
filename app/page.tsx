@@ -27,7 +27,6 @@ async function Season({ searchParams }: PageProps<"/">) {
       </section>
     );
   }
-  const mb = (n: number) => Math.round(n / 1048576);
   const champion = data.standings?.drivers[0] ?? null;
 
   return (
@@ -69,19 +68,7 @@ async function Season({ searchParams }: PageProps<"/">) {
       ) : (
         <section className="panel">
           <h2>Championship</h2>
-          <p className="note">{data.source === "fixtures" ? "Standings come from OpenF1 and are not available in offline mode." : "No standings yet for this season."}</p>
-        </section>
-      )}
-      {data.storage && (
-        <section className="panel storage" aria-labelledby="storage-title">
-          <div className="split">
-            <h2 id="storage-title" className="small">Stored sessions</h2>
-            <span className="muted" style={{ fontSize: 14 }}>{data.storage.sessions} sessions · {mb(data.storage.bytes)} MB of the {mb(data.storage.capBytes)} MB cap</span>
-          </div>
-          <div className="gauge" role="meter" aria-valuemin={0} aria-valuemax={data.storage.capBytes} aria-valuenow={data.storage.bytes} aria-label="Storage used">
-            <div style={{ width: `${Math.min(100, (data.storage.bytes / data.storage.capBytes) * 100)}%` }} />
-          </div>
-          <p className="note">Downloads stop at the cap, which keeps the free 1 GB of Supabase storage from filling up.</p>
+          <p className="note">No standings yet for this season.</p>
         </section>
       )}
     </>
@@ -94,8 +81,8 @@ export default function Home(props: PageProps<"/">) {
       <header className="masthead">
         <div>
           <div className="hd" style={{ color: "var(--red-text)" }}>Race weekend dashboard</div>
-          <h1>Formula 1, replayed</h1>
-          <p>Track map, sector times, gaps and flags for every race, sprint and qualifying session since 2023.</p>
+          <h1>Formula 1, live and replayed</h1>
+          <p>Follow every session on a live track map with timing, gaps and flags, or replay any session since 2023.</p>
         </div>
       </header>
       <main className="page-main">
@@ -103,7 +90,7 @@ export default function Home(props: PageProps<"/">) {
           <Season {...props} />
         </Suspense>
       </main>
-      <footer className="footer">Data: OpenF1, an unofficial project not affiliated with Formula 1 (CC BY-NC-SA 4.0). Circuit outlines are drawn from OpenF1 car positions. Personal, non-commercial use.</footer>
+      <footer className="footer">An unofficial fan site, not affiliated with Formula 1. Data from OpenF1 (CC BY-NC-SA 4.0).</footer>
     </div>
   );
 }

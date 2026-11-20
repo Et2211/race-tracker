@@ -11,9 +11,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/live/[key]">) {
   await connection();
   const live = await liveContext(ctx.params);
   if (!live) return Response.json({ error: "Not a session" }, { status: 404 });
-  if (!openf1Credentials()) return Response.json({ error: "Live data is not set up: the server has no OpenF1 account (the paid tier). Replays of past sessions work as usual.", code: "not-configured" }, { status: 503, headers: noStore });
+  if (!openf1Credentials()) return Response.json({ error: "Live timing isn't available right now. Replays of past sessions still work.", code: "not-configured" }, { status: 503, headers: noStore });
   if (!(await liveAllowed(live.sessionKey))) {
-    return Response.json({ error: "This session is not on now, and there is no live data for it. Past sessions open as replays.", code: "not-live" }, { status: 404, headers: noStore });
+    return Response.json({ error: "This session isn't live right now. Past sessions open as replays.", code: "not-live" }, { status: 404, headers: noStore });
   }
   try {
     const [{ meta, rev }, status] = await Promise.all([liveMeta(live.store, live.sessionKey), statusView(live.sessionKey)]);
