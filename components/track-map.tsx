@@ -70,10 +70,10 @@ export function MapLegend() {
       <span><i className="key-line" style={{ background: "var(--s1)" }} />Sector 1</span>
       <span><i className="key-line" style={{ background: "var(--s2)" }} />Sector 2</span>
       <span><i className="key-line" style={{ background: "var(--s3)" }} />Sector 3</span>
-      <span><i className="key-line" style={{ height: 8, background: "repeating-linear-gradient(90deg, var(--yellow) 0 5px, transparent 5px 8px)" }} />Flagged marshal sector (estimated)</span>
-      <span><i className="key-dot" style={{ background: "var(--dot)", border: "3px solid var(--yellow)" }} />Stopped (dashed ring: where it stopped)</span>
-      <span><i className="key-dot" style={{ width: 14, height: 14, border: "2px solid var(--red)" }} />Selected driver (click elsewhere or press Esc to clear)</span>
-      <span><i className="key-dot" style={{ background: "var(--dot)", border: "2px solid var(--muted)" }} />Ring colour is the team</span>
+      <span><i className="key-line" style={{ height: 8, background: "repeating-linear-gradient(90deg, var(--yellow) 0 5px, transparent 5px 8px)" }} />Flagged sector</span>
+      <span><i className="key-dot" style={{ background: "var(--dot)", border: "3px solid var(--yellow)" }} />Stopped car</span>
+      <span><i className="key-dot" style={{ width: 14, height: 14, border: "2px solid var(--red)" }} />Selected driver</span>
+      <span><i className="key-dot" style={{ background: "var(--dot)", border: "2px solid var(--muted)" }} />Team colour</span>
     </div>
   );
 }

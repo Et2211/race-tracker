@@ -51,7 +51,7 @@ export function useSession(sessionKey: number, playhead: number | null) {
   const [entry] = useState(() => remember(sessionKey));
   const [meta, setMeta] = useState<SessionMeta | null>(entry.meta);
   const [state, setState] = useState<LoadState>(
-    entry.meta ? { phase: "ready" } : { phase: "meta", message: "Loading timing, flags and results. The first time a session is opened it is downloaded from OpenF1, which takes about 30 seconds" },
+    entry.meta ? { phase: "ready" } : { phase: "meta", message: "Loading timing, flags and results. The first time can take about 30 seconds" },
   );
   const [statuses, setStatuses] = useState<ChunkStatus[]>(entry.meta ? entry.meta.windows.map((w) => (entry.telemetry.has(w.index) ? "ready" : "missing")) : []);
   const [chunkError, setChunkError] = useState<string | null>(null);

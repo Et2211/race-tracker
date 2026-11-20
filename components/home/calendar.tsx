@@ -40,7 +40,6 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
             {m.shape ? (
               <div className="round-figure">
                 <svg className="round-track" viewBox={SHAPE_VIEWBOX} aria-hidden="true"><path d={m.shape.path} /></svg>
-                {m.shape.year < new Date(m.dateStart).getUTCFullYear() && <span className="layout-note">{m.shape.year} layout</span>}
               </div>
             ) : (
               <div className="round-track placeholder" aria-hidden="true" />
@@ -88,7 +87,6 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
           </li>
         ))}
       </ol>
-      <p className="note">{"Each round's button opens its race; the chips open any session."}</p>
     </section>
   );
 }

@@ -29,7 +29,7 @@ export const GapChart = memo(function GapChart({ view, trend, snapshot }: { view
     <div className="inset" style={{ padding: 14 }}>
       <div className="split" style={{ marginBottom: 6 }}>
         <div className="hd">Gap to leader · laps {fromLap}–{toLap}</div>
-        <div className="muted" style={{ fontSize: 13 }}>Seconds behind {leader ?? "the leader"} at the line · lapped cars left out</div>
+        <div className="muted" style={{ fontSize: 13 }}>Seconds behind {leader ?? "the leader"}</div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Line chart of the gap to the race leader over laps ${fromLap} to ${toLap} for ${names.join(", ")}`} className="map">
         <g stroke="#2e3542" strokeWidth={1}>

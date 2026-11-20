@@ -37,17 +37,17 @@ type LoaderResult = ReturnType<typeof useSession> & { live?: { status: LiveStatu
 export function SessionDashboard({ sessionKey, initialTime }: { sessionKey: number; initialTime: number | null }) {
   const [playhead, setPlayhead] = useState<number | null>(initialTime);
   const loader = useSession(sessionKey, playhead);
-  return <Shell loader={loader} sessionKey={sessionKey} initialTime={initialTime} onPlayhead={setPlayhead} mode="replay" />;
+  return <Shell loader={loader} initialTime={initialTime} onPlayhead={setPlayhead} mode="replay" />;
 }
 
 /** A session while it runs, from OpenF1's real-time feed (relayed and stored by the server). */
 export function LiveDashboard({ sessionKey }: { sessionKey: number }) {
   const [playhead, setPlayhead] = useState<number | null>(null);
   const loader = useLiveSession(sessionKey, playhead);
-  return <Shell loader={loader} sessionKey={sessionKey} initialTime={null} onPlayhead={setPlayhead} mode="live" />;
+  return <Shell loader={loader} initialTime={null} onPlayhead={setPlayhead} mode="live" />;
 }
 
-function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: LoaderResult; sessionKey: number; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
+function Shell({ loader, initialTime, onPlayhead, mode }: { loader: LoaderResult; initialTime: number | null; onPlayhead: (t: number) => void; mode: "replay" | "live" }) {
   const { meta } = loader;
   if (!meta) {
     return (
@@ -63,7 +63,7 @@ function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: 
             </>
           ) : (
             <>
-              <h2>{mode === "live" ? `Connecting to session ${sessionKey}` : `Loading session ${sessionKey}`}</h2>
+              <h2>{mode === "live" ? "Connecting to the live session" : "Loading the session"}</h2>
               <p className="note">{loader.state.phase === "meta" ? loader.state.message : ""}…</p>
               <progress aria-label="Loading session data" />
             </>
@@ -166,7 +166,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           <Link href="/" className="back">← All sessions</Link>
           <div className="hd" style={{ color: "var(--red-text)" }}><Link href="/" className="home-link">Race weekend dashboard</Link></div>
           <h1>{meta.meeting.meeting_name}</h1>
-          <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year} · {meta.source === "fixtures" ? "recorded fixtures" : isLive ? "OpenF1 live feed" : "OpenF1 historical data"}</p>
+          <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year}</p>
         </div>
         <div className="pills" aria-live="polite">
           {isLive ? <span className="pill live-pill"><span className="live-dot" />Live</span> : <WatchLiveButton session={meta.session} />}
@@ -181,7 +181,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
       <main className="page-main">
       <div className="toolbar" role="region" aria-label="Session and replay controls">
         <div className="toolbar-row">
-          <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={pickerCurrent} />
+          {!isLive && <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={pickerCurrent} />}
           {isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} following={liveClock.following} onCatchUp={liveClock.toTarget} />}
           {qClock && <QualifyingClockPill clock={qClock} prefix={prefix} live={isLive} t={slowT} />}
           <span className="toolbar-spacer" />
@@ -254,7 +254,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           aria-valuetext={scrubText}
         />
         <div className="toolbar-note muted">
-          {isLive ? <>Car data: {progress.ready} min received · retirements and the official classification appear once OpenF1 publishes results</> : <>Car data {progress.ready} of {progress.total} parts loaded</>}
+          {!isLive && <>Car data {progress.ready} of {progress.total} parts loaded</>}
           {meta.source === "fixtures" ? " (only short recorded windows exist in offline mode)" : ""}
           {progress.failed > 0 && (
             <> · <span role="alert" style={{ color: "var(--red-text)" }}>download failed: {progress.error}</span> <button className="seg small" onClick={loader.retryChunks}>Retry</button></>
@@ -283,12 +283,12 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
           {view.map ? (
             <TrackMap view={view} map={view.map} circuit={meta.session.circuit_short_name} snapshot={snapshot} cars={cars} selected={selected} onSelect={select} />
           ) : (
-            <p className="note">No circuit outline: {meta.outlineNote}</p>
+            <p className="note">No track map for this session.</p>
           )}
           {!snapshot.positionsAvailable && (
             <p className="note" role="status">
               {snapshot.telemetryLoaded
-                ? "OpenF1 has no car positions for this moment, so no cars are shown."
+                ? "No car positions for this moment."
                 : meta.source === "fixtures"
                   ? "No car positions were recorded for this moment."
                   : progress.failed > 0
@@ -296,10 +296,6 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
                     : "Car positions for this moment are still downloading."}
             </p>
           )}
-          {snapshot.flags.some((f) => !f.placement.known) && (
-            <p className="note">{snapshot.flags.filter((f) => !f.placement.known).map((f) => (f.placement.known ? "" : f.placement.reason)).join(" ")} Nothing is highlighted for it.</p>
-          )}
-          {meta.outline && <p className="note">{meta.outlineNote} The line is the racing line of that lap, not the track edges.</p>}
           <MapLegend />
         </section>
         <aside className="col-side">
@@ -315,8 +311,8 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
               <h2>{qualifying.sessionName} · sector times</h2>
               <p className="lede">
                 {meta.kind === "practice"
-                  ? "Best valid lap per driver so far; laps deleted by race control are left out."
-                  : <>{qualifying.final ? "Final result of the session that set the grid. " : "Laps completed so far. "}Best valid lap per driver in the selected phase; laps deleted by race control are left out.</>}
+                  ? "Best lap per driver. Deleted laps don't count."
+                  : "Best lap per driver in each phase. Deleted laps don't count."}
               </p>
             </div>
             {meta.kind !== "practice" && (
@@ -350,8 +346,8 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
               <h2>{meta.session.session_name} · splits</h2>
               <p className="lede">
                 {snapshot.beforeStart
-                  ? "Before the start: the order shown is the starting grid. The formation lap is not timed; laps, sectors and gaps begin at lights out."
-                  : "Last completed lap per driver with the latest gaps. Purple is the fastest sector of the race so far, green a personal best."}
+                  ? "Starting grid. Timing begins at lights out."
+                  : "Purple: fastest sector of the race so far. Green: personal best."}
               </p>
             </div>
             {!snapshot.hasGaps && !snapshot.beforeStart && <p className="note">No gap data for this moment.</p>}
@@ -368,7 +364,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
                     </li>
                   ))}
                 </ul>
-                <p className="note" style={{ marginTop: 6 }}>The position feed shows the order on track; penalties applied after the flag appear only in the official result.</p>
+                <p className="note" style={{ marginTop: 6 }}>Includes penalties applied after the flag.</p>
               </div>
             )}
             {snapshot.trend && <GapChart view={view} trend={snapshot.trend} snapshot={snapshot} />}

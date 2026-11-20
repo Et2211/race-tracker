@@ -44,7 +44,7 @@ test("race replay shows the lap-5 yellow, the stopped car and the race-control l
   await expect(panel.getByText("STOPPED FIRST")).toBeVisible();
   // Madrid has no MultiViewer markers, and its only learned positions come from this same race, which
   // are left out, so the sector is named but not drawn.
-  await expect(panel.getByText(/has not been located on this circuit yet/)).toBeVisible();
+  await expect(panel.getByText("Not shown on the map.")).toBeVisible();
   await expect(page.getByText("YELLOW IN TRACK SECTOR 23").first()).toBeVisible();
   await expect(page.getByRole("table", { name: /Race order/ }).getByRole("row")).toHaveCount(23);
 });
@@ -227,7 +227,7 @@ test("race control keeps every message so far and scrolls", async ({ page }) => 
 test("the live page says live data is not set up when the server has no OpenF1 account", async ({ page }) => {
   await page.goto("/live/11369");
   await expect(page.getByRole("heading", { name: "Could not connect to the live session" })).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "Live data is not set up" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Live timing isn't available" })).toBeVisible();
   // A replay of a session that is not on now offers no live view.
   await page.goto("/session/11369");
   await expect(page.getByRole("heading", { name: "Spanish Grand Prix" })).toBeVisible();

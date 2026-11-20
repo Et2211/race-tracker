@@ -31,6 +31,8 @@ export function NextSession({ next: initial, meetings }: { next: NonNullable<Hom
   const start = Date.parse(session.dateStart);
   const end = Date.parse(session.dateEnd);
   const live = now !== null && now >= start && now < end;
+  // Ended, but still the session shown (until 30 minutes after its end, while live data still comes in).
+  const finished = now !== null && now >= end;
   // The live view has data from 20 minutes before the start (the relays start then).
   const watchable = now !== null && now >= start - 20 * 60_000 && now < end + 30 * 60_000;
   const left = now === null ? null : Math.max(0, start - now);
@@ -43,7 +45,7 @@ export function NextSession({ next: initial, meetings }: { next: NonNullable<Hom
   return (
     <section className="panel hero" aria-labelledby="next-title">
       <div className="hero-copy">
-        <div className="hd" style={{ color: "var(--red-text)" }}>{live ? "On track now" : "Next session"}{meeting.round ? ` · Round ${meeting.round}` : ""}</div>
+        <div className="hd" style={{ color: "var(--red-text)" }}>{live ? "On track now" : finished ? "Just finished" : "Next session"}{meeting.round ? ` · Round ${meeting.round}` : ""}</div>
         <h2 id="next-title" className="hero-title">{meeting.name}</h2>
         <p className="hero-sub">{session.name} · {meeting.circuit}</p>
         <p className="muted" style={{ margin: 0 }}>{when}</p>
@@ -52,8 +54,8 @@ export function NextSession({ next: initial, meetings }: { next: NonNullable<Hom
             <span className="live-dot" aria-hidden="true" /> Watch live
           </Link>
         )}
-        {live ? (
-          <p className="note" style={{ marginTop: 8 }}>The full replay is downloaded automatically about three hours after the session ends.</p>
+        {live || finished ? (
+          <p className="note" style={{ marginTop: 8 }}>The full replay is ready a few hours after the session ends.</p>
         ) : (
           <div className="countdown" role="timer" aria-label={parts ? `${parts.d} days ${parts.h} hours ${parts.m} minutes to go` : "Countdown"}>
             {(["d", "h", "m", "s"] as const).map((k) => (
@@ -77,10 +79,8 @@ export function NextSession({ next: initial, meetings }: { next: NonNullable<Hom
             <path d={meeting.shape.path} className="track-line" />
             <circle cx={meeting.shape.startX} cy={meeting.shape.startY} r={9} className="track-start" />
           </svg>
-          {meeting.shape.year < new Date(meeting.dateStart).getUTCFullYear() && <figcaption className="layout-note">{meeting.shape.year} layout</figcaption>}
         </figure>
       )}
-      {!meeting.shape && <p className="note" style={{ alignSelf: "end" }}>New circuit: its outline is drawn after the first session here.</p>}
     </section>
   );
 }

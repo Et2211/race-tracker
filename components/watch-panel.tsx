@@ -43,7 +43,7 @@ export const WatchPanel = memo(function WatchPanel({ view, year, watch, selected
     <section className="panel watch" aria-labelledby="watch-title">
       <div>
         <h2 id="watch-title" className="small">Worth watching</h2>
-        <p className="lede">Cars within a second of each other, or catching the car ahead, from the gaps at the line over the last few laps. Pairs on different strategies (one car still to make its first stop, or tyres 10+ laps apart) are marked and ranked below real fights.</p>
+        <p className="lede">Cars within a second of each other, or closing in on the car ahead.</p>
       </div>
       {watch.note ? (
         <p className="note">{watch.note}</p>
@@ -77,7 +77,7 @@ export const WatchPanel = memo(function WatchPanel({ view, year, watch, selected
           </a>
         ))}
       </div>
-      <p className="note">Streams open in a new window: F1 TV and NOW block being shown inside other sites. Onboard cameras are on F1 TV; a replay here is not synced to their video.</p>
+      <p className="note">Streams open in a new tab. Onboard cameras are on F1 TV.</p>
     </section>
   );
 });

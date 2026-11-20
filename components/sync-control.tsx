@@ -31,13 +31,11 @@ export function SyncControl({ live = false, points, synced, playing, onSync, onN
         <p className="note" style={{ margin: 0 }}>
           {live ? (
             <>
-              Watching the race on NOW or another stream? Streams run 30–60 s behind real life. Pick a moment you will see on it,
-              press <strong>Now</strong> as it happens, and the dashboard holds itself that far behind so it never shows a move before your video does.
+              Watching on TV or a stream? Pick a moment, press <strong>Now</strong> when you see it, and the dashboard stays in step with your video.
             </>
           ) : (
             <>
-              Watching a recording of the race in another window or in picture-in-picture? Pick a moment you will see on it,
-              press <strong>Now</strong> as it happens, and the replay jumps there and plays at normal speed alongside the video.
+              Watching a recording? Pick a moment, press <strong>Now</strong> when you see it, and the replay plays in step with your video.
             </>
           )}
         </p>

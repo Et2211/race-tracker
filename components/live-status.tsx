@@ -1,5 +1,4 @@
 import type { LiveStatusView } from "@/lib/live/http";
-import { formatClock } from "@/lib/timing/format";
 
 /** Whether the live feed is arriving, and how far behind the newest data the dashboard is. */
 export function LiveStatusLine({ status, behind, synced, following, onCatchUp }: { status: LiveStatusView | null; behind: number; synced: boolean; following: boolean; onCatchUp: () => void }) {
@@ -9,16 +8,16 @@ export function LiveStatusLine({ status, behind, synced, following, onCatchUp }:
     text = "Connecting…";
     tone = "off";
   } else if (!status.configured) {
-    text = "Live data is not set up: the server has no OpenF1 account.";
+    text = "Live timing isn't available right now.";
     tone = "off";
   } else if (status.relaysAlive > 0) {
-    text = `Connected${status.lastSecond !== null ? ` · data to ${formatClock((status.lastSecond + 1) * 1000)} UTC` : " · waiting for the first data"}`;
+    text = status.lastSecond !== null ? "" : "Waiting for the first data";
   } else if (status.lastSeen) {
     const ago = Math.round((status.now - Date.parse(status.lastSeen)) / 1000);
-    text = `No feed for ${ago} s${status.lastSecond !== null ? ` · data to ${formatClock((status.lastSecond + 1) * 1000)} UTC` : ""}. Relays start every minute while a session is on.`;
+    text = `Reconnecting… (no data for ${ago} s)`;
     tone = "warn";
   } else {
-    text = "Waiting for the feed. Relays start every minute from 20 minutes before a session.";
+    text = "Waiting for the session to start";
     tone = "off";
   }
   const seconds = Math.round(behind / 1000);
@@ -29,7 +28,7 @@ export function LiveStatusLine({ status, behind, synced, following, onCatchUp }:
       <span className="muted">{text}</span>
       {!following && seconds >= 3 && (
         <span className="muted">
-          · showing {seconds} s behind {synced ? "the data (synced to your stream)" : "the newest data"}{" "}
+          · {seconds} s behind{synced ? " (synced to your stream)" : ""}{" "}
           <button className="seg" onClick={onCatchUp}>{synced ? "Back to your stream" : "Back to live"}</button>
         </span>
       )}
