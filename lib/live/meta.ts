@@ -2,9 +2,8 @@ import "server-only";
 import { openf1 } from "@/lib/openf1/client";
 import type { Meeting, Session } from "@/lib/openf1/types";
 import { assembleMeta, qualifyingFor } from "@/lib/session/assemble";
-import { learnedSectors, metaKey, multiviewerCircuit } from "@/lib/session/ingest";
+import { learnedSectors, metaKey, multiviewerCircuit, referenceOutline } from "@/lib/session/ingest";
 import type { SessionMeta } from "@/lib/session/types";
-import { sessionIndex } from "@/lib/storage/session-index";
 import { readJson } from "@/lib/storage/store";
 import { mergeLiveRows } from "./merge";
 import { LIVE_PAGE, type LiveStore } from "./store";
@@ -26,8 +25,6 @@ function sessionInfo(sessionKey: number) {
   return p;
 }
 
-type Reference = { outline: NonNullable<SessionMeta["outline"]>; year: number; sessionName: string };
-
 /** Things read from stored sessions, kept for 10 minutes per server instance: each is a multi-MB file. */
 const stored = new Map<string, { at: number; value: Promise<unknown> }>();
 function remembered<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -36,18 +33,6 @@ function remembered<T>(key: string, load: () => Promise<T>): Promise<T> {
   const value = load();
   stored.set(key, { at: Date.now(), value });
   return value;
-}
-
-/** The outline of the newest stored session at this circuit: the live map is drawn on it. */
-function referenceOutline(circuitKey: number, except: number): Promise<Reference | null> {
-  return remembered(`outline:${circuitKey}`, async () => {
-    for (const key of await sessionIndex().atCircuit(circuitKey).catch(() => [] as number[])) {
-      if (key === except) continue;
-      const meta = await readJson<SessionMeta>(metaKey(key));
-      if (meta?.outline) return { outline: meta.outline, year: meta.session.year, sessionName: meta.session.session_name };
-    }
-    return null;
-  });
 }
 
 /** The stored qualifying session that set this race's grid, as timing only. */

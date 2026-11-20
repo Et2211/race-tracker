@@ -16,6 +16,31 @@ import { encodeChunk } from "./telemetry";
 import { sessionKind, type SessionMeta, type TelemetryChunk } from "./types";
 
 export const metaKey = (sessionKey: number) => `sessions/${sessionKey}/meta.json`;
+
+/** A stored session's circuit outline, to draw a session that has none of its own on. */
+export type ReferenceOutline = { outline: NonNullable<SessionMeta["outline"]>; year: number; sessionName: string };
+const referenceCache = new Map<number, { at: number; value: Promise<ReferenceOutline | null> }>();
+
+/**
+ * The outline of the newest stored session at this circuit, other than `except`: for a live
+ * session (the feed has no outline), and for one with no usable lap of its own (a wet practice
+ * where hardly anyone set a timed lap). Kept for 10 minutes per server instance: each read is a
+ * multi-MB file.
+ */
+export function referenceOutline(circuitKey: number, except: number): Promise<ReferenceOutline | null> {
+  const hit = referenceCache.get(circuitKey);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.value;
+  const value = (async () => {
+    for (const key of await sessionIndex().atCircuit(circuitKey).catch(() => [] as number[])) {
+      if (key === except) continue;
+      const meta = await readJson<SessionMeta>(metaKey(key));
+      if (meta?.outline) return { outline: meta.outline, year: meta.session.year, sessionName: meta.session.session_name };
+    }
+    return null;
+  })();
+  referenceCache.set(circuitKey, { at: Date.now(), value });
+  return value;
+}
 export const summaryKey = (sessionKey: number) => `sessions/${sessionKey}/summary.json`;
 export const circuitKeyPath = (circuitKey: number) => `circuits/${circuitKey}.json`;
 
@@ -205,6 +230,13 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
     const lap = outlineLap(qualifyingLaps);
     if (lap) outline = outlineFrom(lap, await lapTrace(qualifying.sessionKey, lap));
     if (outline) outlineNote = `This session has no position data for its laps; the circuit is drawn from ${qualifying.sessionName}.`;
+  }
+  if (!outline) {
+    const reference = await referenceOutline(session.circuit_key, sessionKey);
+    if (reference) {
+      outline = reference.outline;
+      outlineNote = `No usable lap in this session; drawn from the ${reference.year} ${reference.sessionName.toLowerCase()} here.`;
+    }
   }
 
   const meta = assembleMeta({
