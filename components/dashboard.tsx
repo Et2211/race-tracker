@@ -53,7 +53,7 @@ function Shell({ loader, sessionKey, initialTime, onPlayhead, mode }: { loader: 
     return (
       <div className="page">
         <main className="page-main">
-        <div className="toolbar"><SessionPicker label="Choose a session" /></div>
+        {mode === "replay" && <div className="toolbar"><SessionPicker label="Choose a session" /></div>}
         <section className="panel" aria-live="polite">
           {loader.state.phase === "error" ? (
             <>
