@@ -1,4 +1,4 @@
-import type { Lap, RaceControl } from "@/lib/openf1/types";
+import type { Lap, RaceControl, Session } from "@/lib/openf1/types";
 import type { Phase } from "./qualifying";
 
 /**
@@ -77,6 +77,72 @@ export function qualifyingClock(raceControl: RaceControl[], t: number, sprint: b
     return { state: running ? "running" : "stopped", phase, remainingMs: Math.max(0, total - ranMs) };
   }
   return { state: "over" };
+}
+
+/**
+ * The practice clock: how long is left in the session. Unlike qualifying, a red flag does not stop
+ * it, so the session ends at its scheduled time whatever happens on track, with two exceptions
+ * race control announces: a start moved to a new time ("SESSION WILL START AT 12:50", local time)
+ * keeps the full length from then, and "FREE PRACTICE 1 WILL BE EXTENDED BY (A FURTHER) 4 MINUTES"
+ * adds time. Only what race control had said by `t` counts, as on the TV clock. Cars still running
+ * well past the end with no extension announced are reported as that, not as a made-up time.
+ * Returns null for
+ * sessions longer than two hours (pre-season testing, with its lunch break), whose clock this does
+ * not model.
+ */
+export type PracticeClock =
+  | { state: "before"; startsAt: number | null }
+  | { state: "running" | "red"; remainingMs: number }
+  /** Still running well after the time it should have ended, with no extension announced. */
+  | { state: "overrun" }
+  | { state: "over" };
+
+const MAX_PRACTICE_MS = 120 * MIN;
+/** The chequered flag arrives within seconds of the clock reaching zero; give it this long. */
+const OVERRUN_AFTER_MS = 30_000;
+
+/** "HH:MM" local time at the circuit, as a timestamp: the one nearest to `near`. */
+function localTimeNear(hhmm: string, gmtOffset: string, near: number): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  const o = /^(-)?(\d{1,2}):(\d{2})/.exec(gmtOffset);
+  if (!m || !o) return null;
+  const offsetMs = (o[1] ? -1 : 1) * (Number(o[2]) * 60 + Number(o[3])) * MIN;
+  const localNear = new Date(near + offsetMs);
+  const day = Date.UTC(localNear.getUTCFullYear(), localNear.getUTCMonth(), localNear.getUTCDate());
+  const at = day + (Number(m[1]) * 60 + Number(m[2])) * MIN - offsetMs;
+  // The announced time is within hours of the plan, so pick the day that puts it closest.
+  return [at - 86_400_000, at, at + 86_400_000].reduce((a, b) => (Math.abs(b - near) < Math.abs(a - near) ? b : a));
+}
+
+export function practiceClock(session: Pick<Session, "date_start" | "date_end" | "gmt_offset">, raceControl: RaceControl[], t: number): PracticeClock | null {
+  const plannedStart = Date.parse(session.date_start);
+  const length = Date.parse(session.date_end) - plannedStart;
+  if (!(length > 0) || length > MAX_PRACTICE_MS) return null;
+  const rows = [...raceControl].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+  let start = plannedStart;
+  let extraMs = 0;
+  let state: "before" | "running" | "red" | "over" = "before";
+  for (const r of rows) {
+    if (Date.parse(r.date) > t) break;
+    const moved = state === "before" ? /WILL START AT (\d{1,2}:\d{2})/.exec(r.message) : null;
+    const extended = /EXTENDED BY (?:A FURTHER )?(\d+) MINUTE/.exec(r.message);
+    if (moved) start = localTimeNear(moved[1], session.gmt_offset, plannedStart) ?? start;
+    else if (extended) extraMs += Number(extended[1]) * MIN;
+    else if (r.message === "SESSION STARTED") state = "running";
+    else if (state === "before") continue;
+    else if (r.message === "SESSION FINISHED" || r.flag === "CHEQUERED") state = "over";
+    else if (r.message === "SESSION ABORTED" || r.flag === "RED") state = "red";
+  }
+  if (state === "before") {
+    const started = rows.find((r) => r.message === "SESSION STARTED");
+    return { state, startsAt: started ? Date.parse(started.date) : null };
+  }
+  if (state === "over") return { state };
+  const endsAt = start + length + extraMs;
+  // A red flag that runs out the clock ends the session with no chequered flag.
+  if (state === "red" && t >= endsAt) return { state: "over" };
+  if (state === "running" && t >= endsAt + OVERRUN_AFTER_MS) return { state: "overrun" };
+  return { state, remainingMs: Math.max(0, endsAt - t) };
 }
 
 /**

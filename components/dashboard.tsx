@@ -11,7 +11,7 @@ import { useLiveSession } from "@/lib/replay/use-live";
 import { useSession } from "@/lib/replay/use-session";
 import { REACTION_MS, syncPoints, type SyncPoint } from "@/lib/replay/sync";
 import { jumpTargets } from "@/lib/replay/timeline";
-import { qualifyingClock, quietStretches } from "@/lib/timing/session-clock";
+import { practiceClock, qualifyingClock, quietStretches } from "@/lib/timing/session-clock";
 import { traceAt } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
 import { formatClock, formatLapTime, formatSector } from "@/lib/timing/format";
@@ -19,7 +19,7 @@ import type { Phase } from "@/lib/timing/qualifying";
 import { toMap } from "@/lib/track/map";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
-import { QualifyingClockPill, WatchLiveButton } from "./session-clock";
+import { PracticeClockPill, QualifyingClockPill, WatchLiveButton } from "./session-clock";
 import { replayAfter } from "@/lib/session/catalog";
 import { scrubTrack } from "@/lib/replay/scrub-track";
 import { FinishedLine, NotLivePanel } from "./live-ended";
@@ -167,6 +167,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
   const loadedRanges = useMemo(() => telemetry.ranges(), [telemetry, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickerCurrent = useMemo(() => ({ year, meetingKey: meta.meeting.meeting_key, sessionKey: meta.session.session_key }), [year, meta.meeting.meeting_key, meta.session.session_key]);
   const qClock = meta.kind === "qualifying" ? qualifyingClock(meta.raceControl, slowT, prefix === "SQ", year) : null;
+  const pClock = meta.kind === "practice" ? practiceClock(meta.session, meta.raceControl, slowT) : null;
   // Screen readers hear the position when it changes meaningfully, not every second of playback.
   const scrubText = `${meta.kind === "race" ? (snapshot.beforeStart ? "before the start" : `lap ${snapshot.lap}`) : meta.kind === "practice" ? meta.session.session_name : (currentTarget?.label ?? "before the start")}, ${formatClock(Math.floor(slowT / 10_000) * 10_000)} UTC`;
 
@@ -199,6 +200,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
             isLive && <LiveStatusLine status={liveStatus} behind={liveClock.behind} synced={liveClock.synced} following={liveClock.following} onCatchUp={liveClock.toTarget} />
           )}
           {qClock && <QualifyingClockPill clock={qClock} prefix={prefix} live={isLive} t={slowT} />}
+          {pClock && <PracticeClockPill clock={pClock} name={meta.session.session_name} live={isLive} t={slowT} />}
           <span className="toolbar-spacer" />
           <SyncControl
             live={isLive}

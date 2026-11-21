@@ -3,12 +3,23 @@
 import Link from "next/link";
 import { useNow } from "@/components/home/use-now";
 import type { Session } from "@/lib/openf1/types";
-import type { QualifyingClock } from "@/lib/timing/session-clock";
+import type { PracticeClock, QualifyingClock } from "@/lib/timing/session-clock";
 
+const two = (n: number) => String(n).padStart(2, "0");
+/** m:ss, or h:mm:ss from an hour up, rounded up as session clocks are. */
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  if (s >= 3600) return `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`;
+  return `${Math.floor(s / 60)}:${two(s % 60)}`;
 };
+
+function ClockPill({ text, tone }: { text: string; tone: string }) {
+  return (
+    <span className={`pill session-clock ${tone}`} role="timer" aria-label={`Session clock: ${text}`}>
+      {text}
+    </span>
+  );
+}
 
 /** The qualifying clock, as the TV graphic shows it: time left in the phase, or the break. */
 export function QualifyingClockPill({ clock, prefix, live, t }: { clock: QualifyingClock; prefix: string; live: boolean; t: number }) {
@@ -33,11 +44,35 @@ export function QualifyingClockPill({ clock, prefix, live, t }: { clock: Qualify
     case "over":
       text = "Qualifying over";
   }
-  return (
-    <span className={`pill session-clock ${tone}`} role="timer" aria-label={`Session clock: ${text}`}>
-      {text}
-    </span>
-  );
+  return <ClockPill text={text} tone={tone} />;
+}
+
+/** The practice clock: time left in the session, which keeps running under a red flag. */
+export function PracticeClockPill({ clock, name, live, t }: { clock: PracticeClock; name: string; live: boolean; t: number }) {
+  const short = name.replace(/^Practice (\d)$/, "FP$1");
+  let text: string;
+  let tone = "";
+  switch (clock.state) {
+    case "before":
+      // A replay knows when it started; live, a delay is only announced in race control.
+      text = clock.startsAt !== null && !live ? `${short} starts in ${mmss(clock.startsAt - t)}` : `Before ${short}`;
+      break;
+    case "running":
+      text = `${short} · ${mmss(clock.remainingMs)} left`;
+      tone = "on";
+      break;
+    case "red":
+      text = `${short} · red flag · ${mmss(clock.remainingMs)} left`;
+      tone = "stopped";
+      break;
+    case "overrun":
+      text = `${short} · running past its scheduled end`;
+      tone = "on";
+      break;
+    case "over":
+      text = `${short} over`;
+  }
+  return <ClockPill text={text} tone={tone} />;
 }
 
 /** Shown on a replay while the session is actually on: from 20 minutes before to 30 minutes after. */
