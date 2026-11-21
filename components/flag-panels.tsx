@@ -1,12 +1,25 @@
-import { memo } from "react";
+import { memo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { FlagView, Snapshot } from "@/lib/dashboard/model";
 import type { StaticView } from "@/lib/dashboard/snapshot";
+import { useHeightTransition } from "./use-height-transition";
 
 const sectorList = (f: FlagView) => (f.alsoSectors.length ? `Also shown in sector ${f.alsoSectors.join(", ")}.` : "");
 
-function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
+/** A panel that grows or shrinks smoothly when what it shows changes size. */
+function AlertBox({ alert, style, label, children }: { alert: boolean; style?: CSSProperties; label?: string; children: ReactNode }) {
+  const box = useRef<HTMLElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useHeightTransition(box, content);
   return (
-    <section className="panel alert" aria-label={`${flag.flag} flag in marshal sector ${flag.sector}`}>
+    <section ref={box} className={alert ? "panel alert alert-box" : "panel alert-box"} style={style} aria-label={label}>
+      <div ref={content} className="alert-box-body">{children}</div>
+    </section>
+  );
+}
+
+function FlagBody({ flag, view }: { flag: FlagView; view: StaticView }) {
+  return (
+    <>
       <div className="split" style={{ alignItems: "center" }}>
         <span className="badge">{flag.flag}</span>
         <span className="muted" style={{ fontSize: 14 }}>Raised {flag.raisedAt} UTC{flag.lap ? ` · Lap ${flag.lap}${view.totalLaps ? ` / ${view.totalLaps}` : ""}` : ""}</span>
@@ -59,7 +72,7 @@ function FlagPanel({ flag, view }: { flag: FlagView; view: StaticView }) {
         </div>
       </div>
       <p className="note">Estimated from car data, not from the stewards. Says who stopped, not who was at fault.</p>
-    </section>
+    </>
   );
 }
 
@@ -69,23 +82,31 @@ export const FlagPanels = memo(function FlagPanels({ view, snapshot }: { view: S
   return (
     <>
       {snapshot.red && (
-        <section className="panel alert" style={{ borderColor: "var(--red)" }}>
+        <AlertBox alert style={{ borderColor: "var(--red)" }}>
           <span className="badge" style={{ background: "var(--red)", color: "#fff" }}>RED FLAG</span>
           <div className="big">Session stopped</div>
-        </section>
+        </AlertBox>
       )}
       {sc && (
-        <section className="panel alert">
+        <AlertBox alert>
           <span className="badge">{sc.kind === "VSC" ? "VIRTUAL SAFETY CAR" : "SAFETY CAR"}{sc.ending ? " · ENDING" : ""}</span>
           <div className="big">Whole track under caution</div>
-        </section>
+        </AlertBox>
       )}
-      {snapshot.flags.map((f) => <FlagPanel key={f.sector} flag={f} view={view} />)}
-      {quiet && (
-        <section className="panel">
-          <span className="badge outline">TRACK CLEAR</span>
-          <div className="big">No active flags</div>
-        </section>
+      {/* Keyed by place, so "track clear" and the first flag are one box that grows into the other. */}
+      {quiet ? (
+        [
+          <AlertBox key={0} alert={false}>
+            <span className="badge outline">TRACK CLEAR</span>
+            <div className="big">No active flags</div>
+          </AlertBox>,
+        ]
+      ) : (
+        snapshot.flags.map((f, i) => (
+          <AlertBox key={i} alert label={`${f.flag} flag in marshal sector ${f.sector}`}>
+            <FlagBody flag={f} view={view} />
+          </AlertBox>
+        ))
       )}
       <section className="panel" style={{ flex: 1 }}>
         <div className="split">

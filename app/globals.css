@@ -80,6 +80,9 @@ a:focus-visible {
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .panel.alert { border-color: var(--yellow); gap: 14px; }
+.alert-box { box-sizing: border-box; }
+.alert-box-body { display: flex; flex-direction: column; gap: inherit; min-width: 0; }
+@media (prefers-reduced-motion: no-preference) { .alert-box { transition: border-color 300ms ease; } }
 .panel h2 { margin: 0; font-family: var(--cond); font-size: 26px; font-weight: 600; }
 .panel h2.small { font-size: 22px; }
 .panel .lede { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
