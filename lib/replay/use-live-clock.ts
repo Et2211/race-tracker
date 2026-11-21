@@ -5,8 +5,16 @@ import type { Speed } from "./use-clock";
 
 /** The newest seconds of car data are still arriving (each poll brings the last second): stay this far back. */
 export const LIVE_EDGE_MS = 3000;
-/** Extra margin kept when the clock catches up with the data, so it moves smoothly between polls. */
-const SMOOTH_MS = 1000;
+/**
+ * The clock keeps its time between these two margins behind the newest data it knows of. The data
+ * arrives in whole seconds, once per poll (a second plus the request), so what the clock knows of
+ * can be two or three seconds stale between polls: a smaller margin lets the clock overtake it.
+ */
+const MARGIN_LOW_MS = 1500;
+const MARGIN_HIGH_MS = 3000;
+/** How much faster or slower than real time the clock runs to get back inside the margins. */
+const SLEW = 0.2;
+
 /** How long to wait for fresh data after the tab comes back before trusting what there is. */
 const RESUME_WAIT_MS = 10_000;
 
@@ -20,20 +28,24 @@ export function liveTime(now: number, delay: number, latest: number | null, paus
 }
 
 /**
- * The delay to use from now on, `elapsed` ms after the last frame:
- *  - more, if the clock has caught up with the newest data (data arrives once a second, so a
- *    clock pinned to it would jump once a second; a little margin keeps it moving between polls);
- *  - less, if it is further behind than `goal` (0 while following live, the synced delay while
- *    synced to a stream), at 1.5x speed rather than a jump; never closer to the data than the margin;
+ * The delay to use from now on, `elapsed` ms after the last frame. The time shown stays between
+ * MARGIN_LOW_MS and MARGIN_HIGH_MS behind the newest data, and is never moved backwards to get
+ * there (a rewind shows as every car jumping back); instead the clock runs a little slow or fast:
+ *  - slower (more delay) if it is closer to the data than the low margin, and stands still at the
+ *    data if it has overtaken it, until more arrives;
+ *  - faster (less delay) if it is further behind than the high margin and than `goal` (0 while
+ *    following live, the synced delay while synced to a stream);
+ *  - placed in the middle of the margins at once only on opening (no delay yet, and past the data);
  *  - otherwise unchanged (`goal` null: scrolled back or resumed after a pause, the viewer chose it).
  */
 export function smoothedDelay(now: number, delay: number, latest: number | null, elapsed = 0, goal: number | null = null): number {
   if (latest === null) return delay;
-  const floor = now - latest + SMOOTH_MS; // the smallest delay that keeps the margin
-  if (now - delay > latest) return floor;
+  if (delay === 0 && now > latest) return now - latest + (MARGIN_LOW_MS + MARGIN_HIGH_MS) / 2; // opening
+  const lowDelay = now - latest + MARGIN_LOW_MS; // the smallest delay that keeps the low margin
+  if (delay < lowDelay) return delay + Math.min(lowDelay - delay, elapsed * SLEW);
   if (goal !== null) {
-    const excess = delay - Math.max(goal, floor);
-    if (excess > 250) return delay - Math.min(excess, elapsed * 0.5);
+    const excess = delay - Math.max(goal, now - latest + MARGIN_HIGH_MS);
+    if (excess > 250) return delay - Math.min(excess, elapsed * SLEW);
   }
   return delay;
 }
