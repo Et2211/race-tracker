@@ -4,9 +4,8 @@ import type { Pass } from "@/lib/driver/passes";
 import { lapAt, type DriverSummary } from "@/lib/driver/summary";
 import type { SessionKind } from "@/lib/session/types";
 import { formatClock, formatLapTime } from "@/lib/timing/format";
+import { compoundName as compound } from "./tyres";
 
-const COMPOUND: Record<string, string> = { SOFT: "Softs", MEDIUM: "Mediums", HARD: "Hards", INTERMEDIATE: "Inters", WET: "Wets" };
-const compound = (c: string | null) => (c ? (COMPOUND[c] ?? c) : "?");
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
