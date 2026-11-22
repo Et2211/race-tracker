@@ -372,3 +372,6 @@ a:focus-visible {
 .compare { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .compare select { background: var(--inset); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font: inherit; min-height: 36px; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
+.lap-pickers { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.lap-pickers select { max-width: 100%; }
+.table-scroll { overflow-x: auto; }

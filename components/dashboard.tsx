@@ -394,7 +394,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
       </div>
 
       <div className="row top" data-keeps-selection>
-        <DriverPanel meta={meta} view={view} selected={selected} t={slowT} live={isLive} />
+        <DriverPanel meta={meta} view={view} selected={selected} t={slowT} live={isLive} telemetry={telemetry} version={version} />
       </div>
 
       </main>

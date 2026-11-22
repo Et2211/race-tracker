@@ -3,20 +3,25 @@
 import { useMemo, useState } from "react";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import { gapStory, lineCrossings } from "@/lib/driver/gaps";
+import { bestOption, lapOptions, officialOf, type LapOption } from "@/lib/driver/lap-compare";
+import { lapTrace } from "@/lib/driver/lap-trace";
 import { driverPace, neutralisedPeriods } from "@/lib/driver/pace";
 import { passes } from "@/lib/driver/passes";
 import { driverSummary, lapAt } from "@/lib/driver/summary";
 import { passingAid } from "@/lib/timing/battles";
+import type { TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
 import { GapsTab, type GapEvent } from "./gaps-tab";
+import { LapCompareTab, type TraceState } from "./lap-compare-tab";
 import { PaceTab } from "./pace-tab";
 import { SummaryTab } from "./summary-tab";
 
-type TabId = "summary" | "pace" | "gaps";
+type TabId = "summary" | "pace" | "gaps" | "laps";
 const TABS: { id: TabId; label: string; races?: true }[] = [
   { id: "summary", label: "Summary" },
   { id: "pace", label: "Race pace", races: true },
   { id: "gaps", label: "Gaps", races: true },
+  { id: "laps", label: "Lap comparison" },
 ];
 
 /** Each driver's place at `t`, from the position feed. */
@@ -40,7 +45,24 @@ const startOf = (meta: SessionMeta) => {
  * data up to the replay time `t`, so a replay never shows what is still to come and a live session
  * fills in as it runs.
  */
-export function DriverPanel({ meta, view, selected, t, live }: { meta: SessionMeta; view: StaticView; selected: number | null; t: number; live: boolean }) {
+export function DriverPanel({
+  meta,
+  view,
+  selected,
+  t,
+  live,
+  telemetry,
+  version,
+}: {
+  meta: SessionMeta;
+  view: StaticView;
+  selected: number | null;
+  t: number;
+  live: boolean;
+  telemetry: TelemetryIndex;
+  /** Changes whenever more telemetry has loaded. */
+  version: number;
+}) {
   const [tabChoice, setTab] = useState<TabId>("summary");
   const [rivalChoice, setRival] = useState<number | null>(null);
   const tabs = TABS.filter((x) => !x.races || meta.kind === "race");
@@ -92,6 +114,39 @@ export function DriverPanel({ meta, view, selected, t, live }: { meta: SessionMe
     return { story, events, neutralLaps };
   }, [tab, selected, crossings, t, meta.pits, meta.laps, allPasses, neutral]);
 
+  // Lap comparison: the selected driver's lap (their best by default) against another (by default
+  // the fastest lap so far by anyone else). Laps finish over time, so the list is rebuilt each second.
+  const [lapAChoice, setLapA] = useState<LapOption | null>(null);
+  const [lapBChoice, setLapB] = useState<LapOption | null>(null);
+  const second = Math.floor(t / 1000);
+  const options = useMemo(() => (tab === "laps" ? lapOptions(meta.laps, meta.raceControl, second * 1000) : []), [tab, meta.laps, meta.raceControl, second]);
+  const findOption = (o: LapOption | null) => (o ? (options.find((x) => x.driver === o.driver && x.lap === o.lap) ?? null) : null);
+  const lapA = (lapAChoice?.driver === selected ? findOption(lapAChoice) : null) ?? (selected !== null ? (bestOption(options, selected) ?? options.filter((o) => o.driver === selected).at(-1) ?? null) : null);
+  const others = options.filter((o) => o.driver !== selected);
+  const lapB = findOption(lapBChoice) ?? bestOption(others) ?? others.at(-1) ?? null;
+  const traces = useMemo(() => {
+    const trace = (o: LapOption | null): TraceState | null => {
+      if (!o) return null;
+      if (!meta.outline) return { error: "There is no track outline for this session, so laps can't be placed along it." };
+      const end = o.start + o.time * 1000;
+      if (meta.source === "live") {
+        // Live car data arrives second by second; a lap just finished may not be complete yet.
+        if (!telemetry.covers(o.start) || !telemetry.covers(end)) return "loading";
+      } else {
+        const needed = meta.windows.filter((w) => w.from < end && w.to > o.start);
+        if (!needed.length) return { error: "No car data was recorded for this lap." };
+        if (needed.some((w) => !telemetry.has(w.index))) return "loading";
+      }
+      const pos = telemetry.traces.get(o.driver);
+      const car = telemetry.cars.get(o.driver);
+      if (!pos || !car) return { error: "No car data for this lap." };
+      return lapTrace(meta.outline, pos, car, o.driver, o.lap, o.start, officialOf(o));
+    };
+    return tab === "laps" ? { a: trace(lapA), b: trace(lapB) } : { a: null, b: null };
+    // `version` changes as telemetry loads into the same index.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, lapA?.driver, lapA?.lap, lapB?.driver, lapB?.lap, meta.outline, meta.source, meta.windows, telemetry, version]);
+
   return (
     <section className="panel col-driver" id="driver-focus" aria-labelledby="driver-focus-title">
       <div className="split">
@@ -116,6 +171,19 @@ export function DriverPanel({ meta, view, selected, t, live }: { meta: SessionMe
           )}
           {tab === "summary" && <SummaryTab summary={summary} driver={selected} view={view} laps={meta.laps} kind={meta.kind} live={live} />}
           {tab === "pace" && pace && <PaceTab main={pace.main} rival={pace.rival} rivals={rivals} onRival={setRival} view={view} />}
+          {tab === "laps" && (
+            <LapCompareTab
+              options={options}
+              driver={selected}
+              a={lapA}
+              b={lapB}
+              onA={setLapA}
+              onB={setLapB}
+              traces={traces}
+              sectors={meta.outline ? [meta.outline.s1 / 10, meta.outline.s2 / 10] : null}
+              view={view}
+            />
+          )}
           {tab === "gaps" && gaps && <GapsTab gaps={gaps.story} events={gaps.events} neutralLaps={gaps.neutralLaps} view={view} aid={passingAid(meta.session.year)} />}
         </>
       )}
