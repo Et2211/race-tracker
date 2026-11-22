@@ -265,4 +265,11 @@ test("driver focus shows the selected driver's race so far", async ({ page }) =>
   await expect(panel.getByText("#12 ANT")).toBeVisible();
   const results = await new AxeBuilder({ page }).include("#driver-focus").analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+
+  // Race pace: #12 against the car ahead, #1.
+  await panel.getByRole("button", { name: "Race pace" }).click();
+  await expect(panel.getByLabel("Compare with")).toHaveValue("1");
+  await expect(panel.getByRole("table", { name: "ANT stints" })).toContainText("Mediums");
+  const pace = await new AxeBuilder({ page }).include("#driver-focus").analyze();
+  expect(pace.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 });

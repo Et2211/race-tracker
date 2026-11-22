@@ -369,3 +369,6 @@ a:focus-visible {
 .chip.kind-investigation { border-color: var(--orange); color: var(--orange); }
 .chip.kind-deleted { border-color: var(--yellow); color: var(--yellow); }
 .chip.kind-no-action { border-color: var(--green); color: var(--green); }
+.compare { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.compare select { background: var(--inset); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font: inherit; min-height: 36px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
