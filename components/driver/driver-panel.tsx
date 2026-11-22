@@ -7,10 +7,11 @@ import { gapStory, lineCrossings } from "@/lib/driver/gaps";
 import { bestOption, lapOptions, officialOf, type LapOption } from "@/lib/driver/lap-compare";
 import { lapTrace, type LapTrace } from "@/lib/driver/lap-trace";
 import { driverPace, neutralisedPeriods } from "@/lib/driver/pace";
-import { passes } from "@/lib/driver/passes";
+import { labelRetirements, passes } from "@/lib/driver/passes";
+import { isRetiredAt, retirements } from "@/lib/incident/retired";
 import { driverSummary, lapAt } from "@/lib/driver/summary";
 import { passingAid } from "@/lib/timing/battles";
-import type { TelemetryIndex } from "@/lib/session/telemetry";
+import { floorIndex, type TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
 import { CornersTab } from "./corners-tab";
 import { GapsTab, type GapEvent } from "./gaps-tab";
@@ -71,7 +72,27 @@ export function DriverPanel({
   const tabs = TABS.filter((x) => !x.races || meta.kind === "race");
   const tab = tabs.some((x) => x.id === tabChoice) ? tabChoice : "summary";
   const start = startOf(meta);
-  const allPasses = useMemo(() => (meta.kind === "race" ? passes(meta.positions, meta.pits, meta.laps, meta.results, start) : []), [meta.kind, meta.positions, meta.pits, meta.laps, meta.results, start]);
+  const rawPasses = useMemo(() => (meta.kind === "race" ? passes(meta.positions, meta.pits, start) : []), [meta.kind, meta.positions, meta.pits, start]);
+  // Passes of a retiring car are labelled once the car has visibly stopped, as the map removes it.
+  const finalLaps = useMemo(() => retirements(meta.results, meta.laps), [meta.results, meta.laps]);
+  const allPasses = useMemo(
+    () =>
+      labelRetirements(rawPasses, t, {
+        finalLapStart: (d) => finalLaps.get(d),
+        stoppedBy: (d, at) => {
+          const trace = telemetry.traces.get(d);
+          return !!trace && isRetiredAt(trace, finalLaps.get(d)!, at);
+        },
+        speedAt: (d, at) => {
+          const car = telemetry.cars.get(d);
+          const i = car ? floorIndex(car.t, at) : -1;
+          return car && i >= 0 && at - car.t[i] < 2000 ? car.speed[i] : null;
+        },
+      }),
+    // `version` changes as telemetry loads into the same index.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawPasses, t, finalLaps, telemetry, version],
+  );
   const summary = useMemo(
     () =>
       selected === null
@@ -125,17 +146,23 @@ export function DriverPanel({
   const lapsTab = tab === "laps" || tab === "corners";
   const options = useMemo(() => (lapsTab ? lapOptions(meta.laps, meta.raceControl, second * 1000) : []), [lapsTab, meta.laps, meta.raceControl, second]);
   const findOption = (o: LapOption | null) => (o ? (options.find((x) => x.driver === o.driver && x.lap === o.lap) ?? null) : null);
-  const lapA = (lapAChoice?.driver === selected ? findOption(lapAChoice) : null) ?? (selected !== null ? (bestOption(options, selected) ?? options.filter((o) => o.driver === selected).at(-1) ?? null) : null);
-  const others = options.filter((o) => o.driver !== selected);
-  const lapB = findOption(lapBChoice) ?? bestOption(others) ?? others.at(-1) ?? null;
+  // Live, only recent laps have car data loaded, so offer those first.
+  const usable = meta.source === "live" ? options.filter((o) => telemetry.covers(o.start) && telemetry.covers(o.start + o.time * 1000)) : options;
+  const lapA =
+    (lapAChoice?.driver === selected ? findOption(lapAChoice) : null) ??
+    (selected !== null ? (bestOption(usable, selected) ?? usable.filter((o) => o.driver === selected).at(-1) ?? bestOption(options, selected) ?? options.filter((o) => o.driver === selected).at(-1) ?? null) : null);
+  const others = usable.filter((o) => o.driver !== selected);
+  const lapB = findOption(lapBChoice) ?? bestOption(others) ?? others.at(-1) ?? bestOption(options.filter((o) => o.driver !== selected)) ?? null;
   const traces = useMemo(() => {
     const trace = (o: LapOption | null): TraceState | null => {
       if (!o) return null;
       if (!meta.outline) return { error: "There is no track outline for this session, so laps can't be placed along it." };
       const end = o.start + o.time * 1000;
       if (meta.source === "live") {
-        // Live car data arrives second by second; a lap just finished may not be complete yet.
-        if (!telemetry.covers(o.start) || !telemetry.covers(end)) return "loading";
+        // The live page holds the last two minutes of car data, plus wherever the viewer has
+        // scrolled back to. A lap that has only just finished may still be arriving.
+        if (!telemetry.covers(o.start)) return { error: "The live page only holds car data from the last couple of minutes and from where you have scrolled back to, so this lap can't be shown. Laps finished while you watch can be." };
+        if (!telemetry.covers(end)) return "loading";
       } else {
         const needed = meta.windows.filter((w) => w.from < end && w.to > o.start);
         if (!needed.length) return { error: "No car data was recorded for this lap." };

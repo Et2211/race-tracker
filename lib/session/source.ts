@@ -108,8 +108,10 @@ export async function ensureChunk(sessionKey: number, index: number): Promise<Te
  * from (fetched once per circuit and year, then kept). Served on their own so stored sessions need
  * no change. The meeting comes from the stored session, else from OpenF1 (a live session).
  */
-export async function circuitCorners(sessionKey: number): Promise<CircuitCorners> {
+export async function circuitCorners(sessionKey: number): Promise<{ corners: CircuitCorners; final: boolean }> {
   let file: MultiViewerCircuit | null = null;
+  // "No file" is final only when it is what the store has on record, not a fetch that just failed.
+  let final = true;
   if (dataMode() === "fixtures") {
     file = (await fixtureExtras(sessionKey)).multiviewer;
   } else {
@@ -120,7 +122,8 @@ export async function circuitCorners(sessionKey: number): Promise<CircuitCorners
       if (session) [meeting] = await openf1<Meeting>("meetings", { meeting_key: session.meeting_key });
     }
     file = meeting ? await multiviewerCircuit(meeting) : null;
+    if (!file && meeting) final = (await readJson(`multiviewer/${meeting.circuit_key}-${meeting.year}.json`)) !== null;
   }
   const corners = (file?.corners ?? []).map((c) => ({ number: c.number, x: c.trackPosition.x, y: c.trackPosition.y }));
-  return corners.length ? { source: "multiviewer", year: file?.year ?? null, corners } : { source: "none" };
+  return { corners: corners.length ? { source: "multiviewer", year: file?.year ?? null, corners } : { source: "none" }, final };
 }

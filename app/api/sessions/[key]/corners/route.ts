@@ -6,8 +6,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/sessions/[key]/
   const key = parseKey((await ctx.params).key);
   if (key === null) return badRequest("Bad session key");
   try {
-    // Circuit files change rarely: an hour in the browser, a day at the CDN.
-    return Response.json(await circuitCorners(key), { headers: { "cache-control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" } });
+    // Circuit files change rarely: an hour in the browser, a day at the CDN. A lookup that failed
+    // for now (MultiViewer unreachable) is not cached, so the next request tries again.
+    const { corners, final } = await circuitCorners(key);
+    return Response.json(corners, { headers: { "cache-control": final ? "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" : "no-store" } });
   } catch (e) {
     return errorJson(e);
   }
