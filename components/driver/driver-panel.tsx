@@ -2,17 +2,21 @@
 
 import { useMemo, useState } from "react";
 import type { StaticView } from "@/lib/dashboard/snapshot";
+import { gapStory, lineCrossings } from "@/lib/driver/gaps";
 import { driverPace, neutralisedPeriods } from "@/lib/driver/pace";
 import { passes } from "@/lib/driver/passes";
-import { driverSummary } from "@/lib/driver/summary";
+import { driverSummary, lapAt } from "@/lib/driver/summary";
+import { passingAid } from "@/lib/timing/battles";
 import type { SessionMeta } from "@/lib/session/types";
+import { GapsTab, type GapEvent } from "./gaps-tab";
 import { PaceTab } from "./pace-tab";
 import { SummaryTab } from "./summary-tab";
 
-type TabId = "summary" | "pace";
+type TabId = "summary" | "pace" | "gaps";
 const TABS: { id: TabId; label: string; races?: true }[] = [
   { id: "summary", label: "Summary" },
   { id: "pace", label: "Race pace", races: true },
+  { id: "gaps", label: "Gaps", races: true },
 ];
 
 /** Each driver's place at `t`, from the position feed. */
@@ -65,6 +69,29 @@ export function DriverPanel({ meta, view, selected, t, live }: { meta: SessionMe
     return { main: of(selected), rival: rival !== null ? of(rival) : null };
   }, [tab, selected, rival, meta, neutral, t]);
 
+  // Gaps: at the line, lap by lap, with the driver's stops and passes on track marked.
+  const crossings = useMemo(() => (meta.kind === "race" ? lineCrossings(meta.laps) : new Map()), [meta.kind, meta.laps]);
+  const gaps = useMemo(() => {
+    if (tab !== "gaps" || selected === null) return null;
+    const story = gapStory(crossings, selected, t);
+    const events: GapEvent[] = [
+      ...meta.pits.filter((p) => p.driver_number === selected && Date.parse(p.date) <= t).map((p) => ({ lap: p.lap_number, kind: "pit" as const, other: null })),
+      ...allPasses
+        .filter((p) => p.t <= t && p.kind === "track" && (p.by === selected || p.of === selected))
+        .map((p) => ({ lap: lapAt(meta.laps, selected, p.t) ?? 0, kind: p.by === selected ? ("gained" as const) : ("lost" as const), other: p.by === selected ? p.of : p.by })),
+    ];
+    const neutralLaps = new Set(
+      meta.laps
+        .filter((l) => l.driver_number === selected && l.date_start && l.lap_duration !== null)
+        .filter((l) => {
+          const a = Date.parse(l.date_start!);
+          return neutral.some(([from, to]) => a < to && a + l.lap_duration! * 1000 > from);
+        })
+        .map((l) => l.lap_number),
+    );
+    return { story, events, neutralLaps };
+  }, [tab, selected, crossings, t, meta.pits, meta.laps, allPasses, neutral]);
+
   return (
     <section className="panel col-driver" id="driver-focus" aria-labelledby="driver-focus-title">
       <div className="split">
@@ -89,6 +116,7 @@ export function DriverPanel({ meta, view, selected, t, live }: { meta: SessionMe
           )}
           {tab === "summary" && <SummaryTab summary={summary} driver={selected} view={view} laps={meta.laps} kind={meta.kind} live={live} />}
           {tab === "pace" && pace && <PaceTab main={pace.main} rival={pace.rival} rivals={rivals} onRival={setRival} view={view} />}
+          {tab === "gaps" && gaps && <GapsTab gaps={gaps.story} events={gaps.events} neutralLaps={gaps.neutralLaps} view={view} aid={passingAid(meta.session.year)} />}
         </>
       )}
     </section>
