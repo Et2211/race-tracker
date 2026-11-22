@@ -346,3 +346,26 @@ a:focus-visible {
 .chart-table summary:hover { color: var(--text); }
 .chart-table .scroll { margin-top: 8px; max-height: none; }
 .chip-session.practice { border-style: dashed; }
+
+/* Driver focus */
+.col-driver { flex: 1 1 100%; gap: 14px; }
+.driver-name { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.driver-name .bar { width: 4px; height: 18px; border-radius: 2px; }
+.inline-link { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.driver-tab { display: flex; flex-direction: column; gap: 14px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.tile { display: flex; flex-direction: column; gap: 4px; }
+.tile-value { font-family: var(--cond); font-size: 26px; font-weight: 600; line-height: 1.1; }
+.driver-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.mini { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+.mini th { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; text-align: right; padding: 4px 6px; }
+.mini td { padding: 6px; border-top: 1px solid var(--border); text-align: right; }
+.mini tbody th { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); font-weight: 400; border-top: 1px solid var(--border); padding: 6px; }
+.mini .left { text-align: left; }
+.event-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; }
+.event-list li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.event-list .when { font-family: var(--mono); font-size: 13px; color: var(--muted); min-width: 40px; flex: none; }
+.chip.kind-penalty { border-color: var(--red-text); color: var(--red-text); }
+.chip.kind-investigation { border-color: var(--orange); color: var(--orange); }
+.chip.kind-deleted { border-color: var(--yellow); color: var(--yellow); }
+.chip.kind-no-action { border-color: var(--green); color: var(--green); }

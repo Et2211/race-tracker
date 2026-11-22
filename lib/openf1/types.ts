@@ -50,6 +50,10 @@ export type Lap = {
   duration_sector_2: number | null;
   duration_sector_3: number | null;
   is_pit_out_lap: boolean;
+  /** Speed-trap and intermediate speeds, km/h. Optional: rows stored as fixtures or built by hand may lack them. */
+  st_speed?: number | null;
+  i1_speed?: number | null;
+  i2_speed?: number | null;
 };
 
 export type RaceControl = {
@@ -95,7 +99,8 @@ export type Stint = {
   tyre_age_at_start: number | null;
 };
 
-export type PitRow = { date: string; driver_number: number; lap_number: number; lane_duration: number | null };
+/** `stop_duration`: seconds stationary; from the 2024 US GP on, and in 2026 often published only hours after a live session. */
+export type PitRow = { date: string; driver_number: number; lap_number: number; lane_duration: number | null; stop_duration?: number | null };
 
 export type SessionResult = {
   driver_number: number;

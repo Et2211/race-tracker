@@ -16,6 +16,7 @@ Chosen as the reference race: a new street circuit (first used in 2026), with a 
 | `race_control.json` | All 185 race-control messages (flags with marshal `sector`, safety-car, stewards) |
 | `pit.json`, `stints.json`, `position.json`, `session_result.json`, `weather.json` | Whole session |
 | `starting_grid.json` | Empty: the race session key returned no rows (see the M1 report) |
+| `overtakes.json` | OpenF1's 123 overtakes (saved 2026-11-22), used only to check the passes the app works out from `position.json` |
 | `*.lap5-yellow-s23.json` | `location`, `car_data`, `intervals` for all cars, 13:12:05–13:13:05 UTC. "YELLOW IN TRACK SECTOR 23" at 13:12:24 after #44 stopped at about 4730 m along the lap. |
 | `*.lap14-vsc-double-yellow-s5.json` | All cars, 13:26:30–13:29:40 UTC. #18 stops at 13:26:36, "YELLOW IN TRACK SECTOR 22/23" at 13:26:41, "VSC DEPLOYED" 13:27:18, "DOUBLE YELLOW IN TRACK SECTOR 5" 13:27:51, clears 13:28:14–13:29:03, "VSC ENDING" 13:29:21. |
 | `*.outline-lap-63-49.json` | Driver 63 only, their lap 49 (the fastest lap of the race, 1:35.587), used to build the track outline. |
