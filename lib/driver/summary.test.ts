@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Lap, PitRow, PositionRow, SessionResult, Stint } from "@/lib/openf1/types";
-import { fixture, raceControl } from "@/test/fixtures";
-import { passes } from "./passes";
+import { fixture, raceControl, telemetryFor } from "@/test/fixtures";
+import { isRetiredAt, retirements } from "@/lib/incident/retired";
+import { floorIndex } from "@/lib/session/telemetry";
+
+import { labelRetirements, passes } from "./passes";
 import { carsNamed, driverSummary, type SummaryInput } from "./summary";
 
 // 2026 Spanish GP race: full position, pit, stint and result feeds.
@@ -13,7 +16,7 @@ const pits = fixture<PitRow[]>(slug, "pit");
 const results = fixture<SessionResult[]>(slug, "session_result");
 const stints = fixture<Stint[]>(slug, "stints");
 const start = Date.parse(rc.find((r) => r.message === "SESSION STARTED")!.date);
-const all = passes(positions, pits, laps, results, start);
+const all = passes(positions, pits, start);
 const input: SummaryInput = { kind: "race", laps, raceControl: rc, positions, pits, stints, passes: all, start, live: false };
 const at = (hms: string) => Date.parse(`2026-09-13T${hms}Z`);
 
@@ -31,8 +34,27 @@ describe("passes", () => {
       const stop = pits.find((s) => (s.driver_number === p.by || s.driver_number === p.of) && Math.abs(p.t - Date.parse(s.date)) <= 100_000);
       expect(stop, `${p.by} passing ${p.of}`).toBeDefined();
     }
-    // #18 stopped on lap 14 and was passed while crawling back: a retirement, not a pass.
-    expect(all.some((p) => p.of === 18 && p.kind === "retirement")).toBe(true);
+  });
+
+  it("labels passing a retiring car only once it has visibly stopped", () => {
+    // #18 broke down on its final lap: #77 went by at 13:26:40 with #18 at 8 km/h, and #18 sat
+    // still from about 13:27:00.
+    const telemetry = telemetryFor(slug, [{ name: "lap14-vsc-double-yellow-s5", from: "2026-09-13T13:26:30Z", to: "2026-09-13T13:29:40Z" }]);
+    const finalLaps = retirements(results, laps);
+    const label = (t: number) =>
+      labelRetirements(all, t, {
+        finalLapStart: (d) => finalLaps.get(d),
+        stoppedBy: (d, at) => !!telemetry.traces.get(d) && isRetiredAt(telemetry.traces.get(d)!, finalLaps.get(d)!, at),
+        speedAt: (d, at) => {
+          const car = telemetry.cars.get(d);
+          const i = car ? floorIndex(car.t, at) : -1;
+          return car && i >= 0 && at - car.t[i] < 2000 ? car.speed[i] : null;
+        },
+      }).find((p) => p.by === 77 && p.of === 18)!.kind;
+    expect(label(at("13:26:45"))).toBe("track");
+    expect(label(at("13:27:30"))).toBe("retirement");
+    // Before any results (live) or without car data, it stays a pass on track.
+    expect(all.find((p) => p.by === 77 && p.of === 18)!.kind).toBe("track");
   });
 });
 

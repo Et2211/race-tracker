@@ -53,8 +53,9 @@ const MAX_TIMING_MISMATCH_MS = 1500;
 
 /**
  * The distance a lap's speed trace adds up to must be within this of the outline's length. On 32
- * stored 2026 sessions the median is within 1 %; the Hungaroring race's outline (3.68 km, from a lap
- * with a hole in its position data, against 4.38 km driven) is 18 % short and would misplace
+ * stored 2026 sessions the median is within 1 %. The 2026 Hungaroring race is 18 % out: OpenF1's
+ * positions for it measure every lap at about 3.69 km, with no gaps, against 4.38 km from the
+ * speed, as if its coordinates were on another scale; placing laps along it would misplace
  * everything along it.
  */
 const MAX_LENGTH_MISMATCH = 0.1;

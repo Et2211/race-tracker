@@ -30,8 +30,8 @@ describe("lap trace", () => {
   });
 
   it("refuses to place a lap along an outline that is the wrong length", () => {
-    // The same line, but claiming to be 20 % shorter: like the 2026 Hungaroring race's outline,
-    // drawn from a lap with a hole in its position data (3.68 km against 4.38 km driven).
+    // The same line, but claiming to be 20 % shorter: like the 2026 Hungaroring race, whose
+    // positions measure each lap at about 3.69 km against 4.38 km from the speed.
     const short = { ...outline, points: outline.points.map((p) => ({ ...p, s: p.s * 0.8 })), length: outline.length * 0.8, s1: outline.s1 * 0.8, s2: outline.s2 * 0.8 };
     const r = lapTrace(short, telemetry.traces.get(63)!, telemetry.cars.get(63)!, 63, 49, start, officialOf(option49));
     expect(r).toHaveProperty("error");
