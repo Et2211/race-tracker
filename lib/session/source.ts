@@ -4,11 +4,12 @@ import { openf1 } from "@/lib/openf1/client";
 import type { Meeting, Session } from "@/lib/openf1/types";
 import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
+import type { CircuitCorners } from "@/lib/driver/corners";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { buildCatalog, withStatus, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
-import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, storedSessionMeta } from "./ingest";
+import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, storedSessionMeta } from "./ingest";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 /** "fixtures" serves only the recorded sessions and never touches the network. */
@@ -99,4 +100,27 @@ export async function ensureChunk(sessionKey: number, index: number): Promise<Te
   // Stored metadata, or (practice, never stored) the copy built for this viewer a moment ago.
   const meta = (await storedSessionMeta(sessionKey)) ?? (await ingestMeta(sessionKey));
   return ingestWindow(meta, index);
+}
+
+
+/**
+ * Corners for a session's circuit, from the MultiViewer file the session's marshal sectors come
+ * from (fetched once per circuit and year, then kept). Served on their own so stored sessions need
+ * no change. The meeting comes from the stored session, else from OpenF1 (a live session).
+ */
+export async function circuitCorners(sessionKey: number): Promise<CircuitCorners> {
+  let file: MultiViewerCircuit | null = null;
+  if (dataMode() === "fixtures") {
+    file = (await fixtureExtras(sessionKey)).multiviewer;
+  } else {
+    const raw = await getStore().getRaw(metaKey(sessionKey));
+    let meeting: Meeting | null = raw ? (JSON.parse(gunzipSync(raw).toString("utf8")) as SessionMeta).meeting : null;
+    if (!meeting) {
+      const [session] = await openf1<Session>("sessions", { session_key: sessionKey });
+      if (session) [meeting] = await openf1<Meeting>("meetings", { meeting_key: session.meeting_key });
+    }
+    file = meeting ? await multiviewerCircuit(meeting) : null;
+  }
+  const corners = (file?.corners ?? []).map((c) => ({ number: c.number, x: c.trackPosition.x, y: c.trackPosition.y }));
+  return corners.length ? { source: "multiviewer", year: file?.year ?? null, corners } : { source: "none" };
 }

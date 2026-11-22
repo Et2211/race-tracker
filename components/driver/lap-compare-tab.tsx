@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import { deltaTrace, topAndMinSpeed, valueAt, type LapOption } from "@/lib/driver/lap-compare";
+import type { Corner } from "@/lib/driver/corners";
 import type { LapTrace } from "@/lib/driver/lap-trace";
 import { formatLapTime, formatSector } from "@/lib/timing/format";
 
@@ -32,6 +33,46 @@ const noteText: Record<NonNullable<LapOption["note"]>, string> = { first: "lap 1
 const optionLabel = (o: LapOption) => `L${o.lap} · ${formatLapTime(o.time)}${o.deleted ? " · deleted" : ""}${o.note ? ` · ${noteText[o.note]}` : ""}`;
 const isTrace = (s: TraceState | null): s is LapTrace => !!s && s !== "loading" && !("error" in s);
 
+/** Pick the selected driver's lap and the lap to compare it with (any driver, any lap). */
+export function LapPickers({ options, driver, a, b, onA, onB, view }: { options: LapOption[]; driver: number; a: LapOption; b: LapOption | null; onA: (o: LapOption) => void; onB: (o: LapOption) => void; view: StaticView }) {
+  const code = (n: number) => view.drivers[n]?.code ?? `#${n}`;
+  const mine = options.filter((o) => o.driver === driver);
+  const drivers = [...new Set(options.map((o) => o.driver))].sort((x, y) => (view.drivers[x]?.code ?? "").localeCompare(view.drivers[y]?.code ?? ""));
+  const bLaps = b ? options.filter((o) => o.driver === b.driver) : [];
+  return (
+    <div className="lap-pickers">
+      <label className="compare">
+        <span className="muted">{code(driver)} lap</span>
+        <select value={a.lap} onChange={(e) => onA(mine.find((o) => o.lap === Number(e.target.value))!)}>
+          {mine.map((o) => <option key={o.lap} value={o.lap}>{optionLabel(o)}</option>)}
+        </select>
+      </label>
+      <label className="compare">
+        <span className="muted">Compare with</span>
+        <select
+          value={b?.driver ?? ""}
+          onChange={(e) => {
+            const d = Number(e.target.value);
+            const laps = options.filter((o) => o.driver === d && !o.deleted && !o.note);
+            const pick = laps.sort((x1, x2) => x1.time - x2.time)[0] ?? options.find((o) => o.driver === d);
+            if (pick) onB(pick);
+          }}
+        >
+          {drivers.map((d) => <option key={d} value={d}>{code(d)} · {view.drivers[d]?.name ?? ""}</option>)}
+        </select>
+      </label>
+      {b && (
+        <label className="compare">
+          <span className="muted">{code(b.driver)} lap</span>
+          <select value={b.lap} onChange={(e) => onB(bLaps.find((o) => o.lap === Number(e.target.value))!)}>
+            {bLaps.map((o) => <option key={o.lap} value={o.lap}>{optionLabel(o)}</option>)}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
+
 export function LapCompareTab({
   options,
   driver,
@@ -41,6 +82,7 @@ export function LapCompareTab({
   onB,
   traces,
   sectors,
+  corners,
   view,
 }: {
   options: LapOption[];
@@ -52,14 +94,14 @@ export function LapCompareTab({
   traces: { a: TraceState | null; b: TraceState | null };
   /** Sector boundaries along the lap, metres. */
   sectors: [number, number] | null;
+  /** Corners to label along the top of the speed chart. */
+  corners: Corner[] | null;
   view: StaticView;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const code = (n: number) => view.drivers[n]?.code ?? `#${n}`;
   const colour = (n: number) => view.drivers[n]?.colour ?? "var(--muted)";
   const mine = options.filter((o) => o.driver === driver);
-  const drivers = [...new Set(options.map((o) => o.driver))].sort((x, y) => (view.drivers[x]?.code ?? "").localeCompare(view.drivers[y]?.code ?? ""));
-  const bLaps = b ? options.filter((o) => o.driver === b.driver) : [];
   const ta = isTrace(traces.a) ? traces.a : null;
   const tb = isTrace(traces.b) ? traces.b : null;
   const delta = useMemo(() => (ta && tb ? deltaTrace(ta, tb) : null), [ta, tb]);
@@ -118,36 +160,7 @@ export function LapCompareTab({
 
   return (
     <div className="driver-tab">
-      <div className="lap-pickers">
-        <label className="compare">
-          <span className="muted">{code(driver)} lap</span>
-          <select value={a.lap} onChange={(e) => onA(mine.find((o) => o.lap === Number(e.target.value))!)}>
-            {mine.map((o) => <option key={o.lap} value={o.lap}>{optionLabel(o)}</option>)}
-          </select>
-        </label>
-        <label className="compare">
-          <span className="muted">Compare with</span>
-          <select
-            value={b?.driver ?? ""}
-            onChange={(e) => {
-              const d = Number(e.target.value);
-              const laps = options.filter((o) => o.driver === d && !o.deleted && !o.note);
-              const pick = laps.sort((x1, x2) => x1.time - x2.time)[0] ?? options.find((o) => o.driver === d);
-              if (pick) onB(pick);
-            }}
-          >
-            {drivers.map((d) => <option key={d} value={d}>{code(d)} · {view.drivers[d]?.name ?? ""}</option>)}
-          </select>
-        </label>
-        {b && (
-          <label className="compare">
-            <span className="muted">{code(b.driver)} lap</span>
-            <select value={b.lap} onChange={(e) => onB(bLaps.find((o) => o.lap === Number(e.target.value))!)}>
-              {bLaps.map((o) => <option key={o.lap} value={o.lap}>{optionLabel(o)}</option>)}
-            </select>
-          </label>
-        )}
-      </div>
+      <LapPickers options={options} driver={driver} a={a} b={b} onA={onA} onB={onB} view={view} />
 
       {b && (
         <div className="inset table-scroll" tabIndex={0} role="region" aria-label="Lap comparison by sector">
@@ -215,6 +228,9 @@ export function LapCompareTab({
                   <line x1={x(s)} x2={x(s)} y1={4} y2={H - 18} stroke="var(--border-strong)" strokeWidth={1} />
                   <text x={x(s) + 4} y={H - 20} fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>S{i + 2}</text>
                 </g>
+              ))}
+              {corners?.map((c) => (
+                <text key={c.label} x={x(c.d)} y={box("speed").top - 9} textAnchor="middle" fill="var(--muted)" fontFamily="var(--mono)" fontSize={9}>{c.label}</text>
               ))}
               {/* Speed */}
               {[speedMin, (speedMin + speedMax) / 2, speedMax].map((v) => (
