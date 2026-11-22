@@ -279,4 +279,13 @@ test("driver focus shows the selected driver's race so far", async ({ page }) =>
   await expect(panel.getByRole("region", { name: "Gaps lap by lap" }).getByRole("row").nth(1)).toContainText("P");
   const gaps = await new AxeBuilder({ page }).include("#driver-focus").analyze();
   expect(gaps.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+
+  // Lap comparison: #12's best lap so far against the fastest by anyone else. The fixtures only
+  // record car data around two incidents, so the page says this lap has none.
+  await panel.getByRole("button", { name: "Lap comparison" }).click();
+  await expect(panel.getByLabel("ANT lap")).toBeVisible();
+  await expect(panel.getByRole("table", { name: "Lap comparison by sector" })).toContainText("Sector 3");
+  await expect(panel.getByText(/No car data was recorded for this lap/).first()).toBeVisible();
+  const laps = await new AxeBuilder({ page }).include("#driver-focus").analyze();
+  expect(laps.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 });
