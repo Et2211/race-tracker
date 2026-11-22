@@ -288,4 +288,11 @@ test("driver focus shows the selected driver's race so far", async ({ page }) =>
   await expect(panel.getByText(/No car data was recorded for this lap/).first()).toBeVisible();
   const laps = await new AxeBuilder({ page }).include("#driver-focus").analyze();
   expect(laps.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+
+  // Corners: the same two laps, so the same message.
+  await panel.getByRole("button", { name: "Corners" }).click();
+  await expect(panel.getByLabel("ANT lap")).toBeVisible();
+  await expect(panel.getByText(/No car data was recorded for this lap/).first()).toBeVisible();
+  const corners = await new AxeBuilder({ page }).include("#driver-focus").analyze();
+  expect(corners.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 });

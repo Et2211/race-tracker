@@ -18,6 +18,8 @@ export type MultiViewerCircuit = {
   year?: number;
   rotation?: number;
   marshalSectors?: { number: number; trackPosition: { x: number; y: number } }[];
+  /** Turns, numbered as on the official circuit map. */
+  corners?: { number: number; trackPosition: { x: number; y: number } }[];
 };
 
 /** Markers further than this from the racing line are treated as not matching the outline. */

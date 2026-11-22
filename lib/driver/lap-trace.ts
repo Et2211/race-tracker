@@ -51,6 +51,14 @@ const MAX_GAP_MS = 2000;
 /** If the measured lap differs from the official time by more than this, the position data is not trusted. */
 const MAX_TIMING_MISMATCH_MS = 1500;
 
+/**
+ * The distance a lap's speed trace adds up to must be within this of the outline's length. On 32
+ * stored 2026 sessions the median is within 1 %; the Hungaroring race's outline (3.68 km, from a lap
+ * with a hole in its position data, against 4.38 km driven) is 18 % short and would misplace
+ * everything along it.
+ */
+const MAX_LENGTH_MISMATCH = 0.1;
+
 /** The lap's official timing, to pin the trace to. Sector times may be missing. */
 export type OfficialLap = { lapMs: number; sector1Ms: number | null; sector2Ms: number | null };
 
@@ -158,6 +166,11 @@ export function lapTrace(
     out.gear.push(car.gear[i]);
   }
   if (out.d.length < 10) return { error: "No car data for this lap." };
+  let driven = 0;
+  for (let i = Math.max(0, floorIndex(car.t, start)); i < car.t.length - 1 && car.t[i] < end; i++) driven += (car.speed[i] / 3.6) * ((Math.min(car.t[i + 1], end) - Math.max(car.t[i], start)) / 1000);
+  if (Math.abs(driven / (L / 10) - 1) > MAX_LENGTH_MISMATCH) {
+    return { error: `The track outline doesn't match this lap: the car drove ${(driven / 1000).toFixed(2)} km, the outline is ${(L / 10000).toFixed(2)} km.` };
+  }
   if (Math.abs(end - start - lapMs) > MAX_TIMING_MISMATCH_MS) return { error: "Position data doesn't line up with this lap's timing." };
   // Interpolation can put neighbouring samples a hair out of order; keep distance non-decreasing.
   for (let i = 1; i < out.d.length; i++) if (out.d[i] < out.d[i - 1]) out.d[i] = out.d[i - 1];

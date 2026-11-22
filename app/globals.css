@@ -375,3 +375,6 @@ a:focus-visible {
 .lap-pickers { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 .lap-pickers select { max-width: 100%; }
 .table-scroll { overflow-x: auto; }
+.timing.corners th[scope="colgroup"] { text-align: center; }
+.num.strong { font-weight: 700; color: var(--text); }
+.timing.corners tbody th { font-family: var(--mono); font-size: 14px; color: var(--text); padding: 4px 6px; }

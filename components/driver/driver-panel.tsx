@@ -1,27 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StaticView } from "@/lib/dashboard/snapshot";
+import { compareCorners, cornersFromMultiViewer, cornersFromSpeed, type CircuitCorners, type CornerSet } from "@/lib/driver/corners";
 import { gapStory, lineCrossings } from "@/lib/driver/gaps";
 import { bestOption, lapOptions, officialOf, type LapOption } from "@/lib/driver/lap-compare";
-import { lapTrace } from "@/lib/driver/lap-trace";
+import { lapTrace, type LapTrace } from "@/lib/driver/lap-trace";
 import { driverPace, neutralisedPeriods } from "@/lib/driver/pace";
 import { passes } from "@/lib/driver/passes";
 import { driverSummary, lapAt } from "@/lib/driver/summary";
 import { passingAid } from "@/lib/timing/battles";
 import type { TelemetryIndex } from "@/lib/session/telemetry";
 import type { SessionMeta } from "@/lib/session/types";
+import { CornersTab } from "./corners-tab";
 import { GapsTab, type GapEvent } from "./gaps-tab";
 import { LapCompareTab, type TraceState } from "./lap-compare-tab";
 import { PaceTab } from "./pace-tab";
 import { SummaryTab } from "./summary-tab";
 
-type TabId = "summary" | "pace" | "gaps" | "laps";
+type TabId = "summary" | "pace" | "gaps" | "laps" | "corners";
 const TABS: { id: TabId; label: string; races?: true }[] = [
   { id: "summary", label: "Summary" },
   { id: "pace", label: "Race pace", races: true },
   { id: "gaps", label: "Gaps", races: true },
   { id: "laps", label: "Lap comparison" },
+  { id: "corners", label: "Corners" },
 ];
 
 /** Each driver's place at `t`, from the position feed. */
@@ -119,7 +122,8 @@ export function DriverPanel({
   const [lapAChoice, setLapA] = useState<LapOption | null>(null);
   const [lapBChoice, setLapB] = useState<LapOption | null>(null);
   const second = Math.floor(t / 1000);
-  const options = useMemo(() => (tab === "laps" ? lapOptions(meta.laps, meta.raceControl, second * 1000) : []), [tab, meta.laps, meta.raceControl, second]);
+  const lapsTab = tab === "laps" || tab === "corners";
+  const options = useMemo(() => (lapsTab ? lapOptions(meta.laps, meta.raceControl, second * 1000) : []), [lapsTab, meta.laps, meta.raceControl, second]);
   const findOption = (o: LapOption | null) => (o ? (options.find((x) => x.driver === o.driver && x.lap === o.lap) ?? null) : null);
   const lapA = (lapAChoice?.driver === selected ? findOption(lapAChoice) : null) ?? (selected !== null ? (bestOption(options, selected) ?? options.filter((o) => o.driver === selected).at(-1) ?? null) : null);
   const others = options.filter((o) => o.driver !== selected);
@@ -142,10 +146,37 @@ export function DriverPanel({
       if (!pos || !car) return { error: "No car data for this lap." };
       return lapTrace(meta.outline, pos, car, o.driver, o.lap, o.start, officialOf(o));
     };
-    return tab === "laps" ? { a: trace(lapA), b: trace(lapB) } : { a: null, b: null };
+    return lapsTab ? { a: trace(lapA), b: trace(lapB) } : { a: null, b: null };
     // `version` changes as telemetry loads into the same index.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, lapA?.driver, lapA?.lap, lapB?.driver, lapB?.lap, meta.outline, meta.source, meta.windows, telemetry, version]);
+  }, [lapsTab, lapA?.driver, lapA?.lap, lapB?.driver, lapB?.lap, meta.outline, meta.source, meta.windows, telemetry, version]);
+
+  // Corners: the circuit's numbered turns (fetched once per session), else found from lap A's speed.
+  const sessionKey = meta.session.session_key;
+  const [circuit, setCircuit] = useState<{ key: number; data: CircuitCorners } | null>(null);
+  useEffect(() => {
+    if (!lapsTab || circuit?.key === sessionKey) return;
+    let live = true;
+    fetch(`/api/sessions/${sessionKey}/corners`)
+      .then((r) => (r.ok ? (r.json() as Promise<CircuitCorners>) : { source: "none" as const }))
+      .catch(() => ({ source: "none" as const }))
+      .then((data) => live && setCircuit({ key: sessionKey, data }));
+    return () => {
+      live = false;
+    };
+  }, [lapsTab, sessionKey, circuit?.key]);
+  const isTrace = (s: TraceState | null): s is LapTrace => !!s && s !== "loading" && !("error" in s);
+  const cornerSet = useMemo((): CornerSet | null => {
+    const data = circuit?.key === sessionKey ? circuit.data : null;
+    if (data?.source === "multiviewer" && meta.outline) {
+      const corners = cornersFromMultiViewer(meta.outline, data.corners);
+      if (corners) return { source: "multiviewer", corners };
+    }
+    // Until the circuit's turns have arrived, don't flash corners found from the speed.
+    if (!data) return null;
+    return isTrace(traces.a) ? { source: "speed", corners: cornersFromSpeed(traces.a) } : null;
+  }, [circuit, sessionKey, meta.outline, traces.a]);
+  const cornerRows = useMemo(() => (tab === "corners" && cornerSet && isTrace(traces.a) ? compareCorners(cornerSet.corners, traces.a, isTrace(traces.b) ? traces.b : null) : null), [tab, cornerSet, traces]);
 
   return (
     <section className="panel col-driver" id="driver-focus" aria-labelledby="driver-focus-title">
@@ -181,6 +212,22 @@ export function DriverPanel({
               onB={setLapB}
               traces={traces}
               sectors={meta.outline ? [meta.outline.s1 / 10, meta.outline.s2 / 10] : null}
+              corners={cornerSet?.corners ?? null}
+              view={view}
+            />
+          )}
+          {tab === "corners" && (
+            <CornersTab
+              options={options}
+              driver={selected}
+              a={lapA}
+              b={lapB}
+              onA={setLapA}
+              onB={setLapB}
+              traces={traces}
+              set={cornerSet}
+              year={circuit?.data.source === "multiviewer" ? circuit.data.year : null}
+              rows={cornerRows}
               view={view}
             />
           )}
