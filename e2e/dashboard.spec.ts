@@ -272,4 +272,11 @@ test("driver focus shows the selected driver's race so far", async ({ page }) =>
   await expect(panel.getByRole("table", { name: "ANT stints" })).toContainText("Mediums");
   const pace = await new AxeBuilder({ page }).include("#driver-focus").analyze();
   expect(pace.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+
+  // Gaps: lap by lap at the line, as a table too.
+  await panel.getByRole("button", { name: "Gaps" }).click();
+  await panel.getByText("Gaps as a table").click();
+  await expect(panel.getByRole("region", { name: "Gaps lap by lap" }).getByRole("row").nth(1)).toContainText("P");
+  const gaps = await new AxeBuilder({ page }).include("#driver-focus").analyze();
+  expect(gaps.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 });
