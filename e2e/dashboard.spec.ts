@@ -249,3 +249,20 @@ test("a part that fails for a moment is fetched again by itself", async ({ page 
   expect(failed).toBe(2);
   await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
 });
+
+test("driver focus shows the selected driver's race so far", async ({ page }) => {
+  // Lap 6 of the 2026 Spanish GP: #12 started second and has not stopped yet.
+  await page.goto("/session/11369?t=2026-09-13T13:12:27Z");
+  await loaded(page);
+  const panel = page.getByRole("region", { name: "Driver focus" });
+  await expect(panel.getByText("Pick a driver on the map or in a timing table")).toBeVisible();
+  await page.getByRole("table", { name: /Race order/ }).locator('[data-driver="12"]').first().click();
+  await expect(panel.getByText("#12 ANT")).toBeVisible();
+  await expect(panel.getByText("Started P2")).toBeVisible();
+  await expect(panel.getByText("No stops yet.")).toBeVisible();
+  // Clicking inside the panel keeps the driver selected.
+  await panel.getByText("Places gained and lost", { exact: true }).click();
+  await expect(panel.getByText("#12 ANT")).toBeVisible();
+  const results = await new AxeBuilder({ page }).include("#driver-focus").analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+});

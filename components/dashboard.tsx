@@ -17,6 +17,7 @@ import type { SessionMeta } from "@/lib/session/types";
 import { formatClock, formatLapTime, formatSector } from "@/lib/timing/format";
 import type { Phase } from "@/lib/timing/qualifying";
 import { toMap } from "@/lib/track/map";
+import { DriverPanel } from "./driver/driver-panel";
 import { FlagPanels } from "./flag-panels";
 import { GapChart } from "./gap-chart";
 import { PracticeClockPill, QualifyingClockPill, WatchLiveButton } from "./session-clock";
@@ -131,12 +132,13 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
 
   const [selected, setSelected] = useState<number | null>(null);
   // Clicking a driver selects it, clicking it again or anywhere that is not a driver clears it,
-  // and so does Escape.
+  // and so does Escape. Clicks in the replay controls and the driver focus panel keep it, so the
+  // focused driver can be followed while playing.
   const select = useCallback((driver: number) => setSelected((current) => (current === driver ? null : driver)), []);
   useEffect(() => {
     if (selected === null) return;
     const onClick = (e: MouseEvent) => {
-      if (!(e.target instanceof Element) || !e.target.closest("[data-driver]")) setSelected(null);
+      if (!(e.target instanceof Element) || !e.target.closest("[data-driver], [data-keeps-selection]")) setSelected(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSelected(null);
@@ -191,7 +193,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
       </header>
 
       <main className="page-main">
-      <div className="toolbar" role="region" aria-label="Session and replay controls">
+      <div className="toolbar" role="region" aria-label="Session and replay controls" data-keeps-selection>
         <div className="toolbar-row">
           {!isLive && <SessionPicker label={`${meta.meeting.meeting_name} · ${meta.session.session_name}`} current={pickerCurrent} />}
           {finished ? (
@@ -295,6 +297,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
                 {qualiPos ? ` · ${prefix === "SQ" ? "Sprint quali" : "Quali"} P${qualiPos}` : ""}
                 {racePos && ` · Race P${racePos.position}`}
                 {racePos?.position === 1 ? " · leading" : racePos?.gap?.kind === "time" ? ` · +${racePos.gap.seconds.toFixed(1)} s to leader` : ""}
+                {" · "}<a href="#driver-focus" className="inline-link" data-keeps-selection>Driver focus ↓</a>
               </div>
             )}
           </div>
@@ -388,6 +391,10 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
             {snapshot.trend && <GapChart view={view} trend={snapshot.trend} snapshot={snapshot} />}
           </section>
         )}
+      </div>
+
+      <div className="row top" data-keeps-selection>
+        <DriverPanel meta={meta} view={view} selected={selected} t={slowT} live={isLive} />
       </div>
 
       </main>

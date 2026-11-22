@@ -67,7 +67,7 @@ export function deletedLaps(raceControl: RaceControl[]): DeletedLap[] {
   return out;
 }
 
-function isDeleted(lap: Lap, deleted: DeletedLap[]): boolean {
+export function isDeleted(lap: Lap, deleted: DeletedLap[]): boolean {
   return deleted.some((d) => {
     if (d.driver !== lap.driver_number) return false;
     // A quoted time identifies the lap exactly; otherwise fall back to the lap number.
