@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useChartPointer } from "@/components/use-chart-pointer";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import { deltaTrace, topAndMinSpeed, valueAt, type LapOption } from "@/lib/driver/lap-compare";
 import type { Corner } from "@/lib/driver/corners";
@@ -99,6 +100,7 @@ export function LapCompareTab({
   view: StaticView;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const pointer = useChartPointer(hover !== null, () => setHover(null));
   const code = (n: number) => view.drivers[n]?.code ?? `#${n}`;
   const colour = (n: number) => view.drivers[n]?.colour ?? "var(--muted)";
   const mine = options.filter((o) => o.driver === driver);
@@ -216,76 +218,78 @@ export function LapCompareTab({
             {b && <span><svg width="22" height="10"><line x1="1" y1="5" x2="21" y2="5" stroke={colour(b.driver)} strokeWidth="2" strokeDasharray="5 3" /></svg>{nameB}</span>}
           </div>
           <div className="chart-wrap" tabIndex={0} role="region" aria-label="Lap comparison charts">
-            <svg viewBox={`0 0 ${W} ${H}`} className="map" role="img" aria-label={`Speed, gap, throttle, brake and gear along the lap for ${nameA}${b ? ` and ${nameB}` : ""}. The table above compares the sectors; the table below gives speeds every 200 metres.`}>
-              {boxes.map((bx) => (
-                <g key={bx.key}>
-                  <text x={LEFT} y={bx.top - 9} fill="var(--muted)" fontFamily="var(--sans)" fontWeight={600} fontSize={11} letterSpacing="0.06em">{bx.label.toUpperCase()}</text>
-                  <line x1={LEFT} x2={RIGHT} y1={bx.bottom} y2={bx.bottom} stroke="#2e3542" strokeWidth={1} />
-                </g>
-              ))}
-              {sectors && sectors.map((s, i) => (
-                <g key={i}>
-                  <line x1={x(s)} x2={x(s)} y1={4} y2={H - 18} stroke="var(--border-strong)" strokeWidth={1} />
-                  <text x={x(s) + 4} y={H - 20} fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>S{i + 2}</text>
-                </g>
-              ))}
-              {corners?.map((c) => (
-                <text key={c.label} x={x(c.d)} y={box("speed").top - 9} textAnchor="middle" fill="var(--muted)" fontFamily="var(--mono)" fontSize={9}>{c.label}</text>
-              ))}
-              {/* Speed */}
-              {[speedMin, (speedMin + speedMax) / 2, speedMax].map((v) => (
-                <g key={v}>
-                  <line x1={LEFT} x2={RIGHT} y1={scale(box("speed"), v, speedMin, speedMax)} y2={scale(box("speed"), v, speedMin, speedMax)} stroke="#2e3542" strokeWidth={1} />
-                  <text x={LEFT - 8} y={scale(box("speed"), v, speedMin, speedMax) + 4} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{v}</text>
-                </g>
-              ))}
-              {ta && <path d={path(ta, "speed", speedMin, speedMax)} fill="none" stroke={colour(a.driver)} strokeWidth={2} strokeLinejoin="round" />}
-              {tb && b && <path d={path(tb, "speed", speedMin, speedMax)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" />}
-              {/* Gap: above the line, A is ahead. */}
-              {delta && (
-                <g>
-                  <line x1={LEFT} x2={RIGHT} y1={scale(box("delta"), 0, -deltaMax, deltaMax)} y2={scale(box("delta"), 0, -deltaMax, deltaMax)} stroke="var(--border-strong)" strokeWidth={1} />
-                  <text x={LEFT - 8} y={box("delta").top + 8} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>+{deltaMax.toFixed(1)}</text>
-                  <text x={LEFT - 8} y={box("delta").bottom} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>−{deltaMax.toFixed(1)}</text>
-                  <path d={delta.d.map((d, i) => `${i ? "L" : "M"}${x(d).toFixed(1)} ${scale(box("delta"), delta.delta[i], -deltaMax, deltaMax).toFixed(1)}`).join("")} fill="none" stroke="var(--text)" strokeWidth={2} strokeLinejoin="round" />
-                  <text x={RIGHT} y={box("delta").top + 10} textAnchor="end" fill="var(--muted)" fontFamily="var(--sans)" fontSize={11}>↑ {nameA} ahead</text>
-                  <text x={RIGHT} y={box("delta").bottom - 4} textAnchor="end" fill="var(--muted)" fontFamily="var(--sans)" fontSize={11}>↓ {nameB} ahead</text>
-                </g>
-              )}
-              {ta && <path d={path(ta, "throttle", 0, 100)} fill="none" stroke={colour(a.driver)} strokeWidth={2} strokeLinejoin="round" />}
-              {tb && b && <path d={path(tb, "throttle", 0, 100)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" />}
-              {/* Brake: one strip per lap. */}
-              {[ta, tb].map((lap, i) =>
-                lap ? (
-                  <g key={i}>
-                    {brakeRuns(lap).map(([from, to]) => (
-                      <rect key={from} x={x(from)} y={box("brake").top + i * (box("brake").h / 2) + 1} width={Math.max(1.5, x(to) - x(from))} height={box("brake").h / 2 - 3} rx={2} fill={i ? "none" : colour(lap.driver)} stroke={i ? colour(lap.driver) : "none"} strokeWidth={i ? 1.5 : 0} />
-                    ))}
+            <div className="chart-canvas">
+              <svg viewBox={`0 0 ${W} ${H}`} className="map" role="img" aria-label={`Speed, gap, throttle, brake and gear along the lap for ${nameA}${b ? ` and ${nameB}` : ""}. The table above compares the sectors; the table below gives speeds every 200 metres.`}>
+                {boxes.map((bx) => (
+                  <g key={bx.key}>
+                    <text x={LEFT} y={bx.top - 9} fill="var(--muted)" fontFamily="var(--sans)" fontWeight={600} fontSize={11} letterSpacing="0.06em">{bx.label.toUpperCase()}</text>
+                    <line x1={LEFT} x2={RIGHT} y1={bx.bottom} y2={bx.bottom} stroke="#2e3542" strokeWidth={1} />
                   </g>
-                ) : null,
-              )}
-              {ta && <path d={path(ta, "gear", 1, 8, true)} fill="none" stroke={colour(a.driver)} strokeWidth={2} />}
-              {tb && b && <path d={path(tb, "gear", 1, 8, true)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" />}
-              {kmTicks.map((d) => <text key={d} x={x(d)} y={H - 4} textAnchor="middle" fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{d / 1000} km</text>)}
-              {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={4} y2={H - 18} stroke="var(--muted)" strokeWidth={1} strokeDasharray="3 3" />}
-              <rect x={LEFT} y={0} width={RIGHT - LEFT} height={H - 18} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
-            </svg>
-            {hover !== null && (
-              <div className="tooltip" style={{ left: `${Math.min(84, Math.max(16, (x(hover) / W) * 100))}%` }} role="status">
-                <div className="hd" style={{ marginBottom: 4 }}>{Math.round(hover)} m</div>
-                {both.map((lap, i) => (
-                  <div key={i} className="tooltip-row" style={{ fontSize: 14 }}>
-                    <span className="bar" style={{ background: colour(lap.driver), height: 12, width: 3 }} />
-                    <span>{code(lap.driver)} L{lap.lap}</span>
-                    <span className="num" style={{ marginLeft: "auto" }}>
-                      {Math.round(valueAt(lap, "speed", hover))} km/h · {Math.round(valueAt(lap, "throttle", hover))}% · G{valueAt(lap, "gear", hover)}
-                      {valueAt(lap, "brake", hover) ? " · brake" : ""}
-                    </span>
-                  </div>
                 ))}
-                {deltaAt(hover) !== null && <div className="note">{Math.abs(deltaAt(hover)!) < 0.005 ? "Level" : `${deltaAt(hover)! > 0 ? nameA : nameB} ahead by ${Math.abs(deltaAt(hover)!).toFixed(2)} s`}</div>}
-              </div>
-            )}
+                {sectors && sectors.map((s, i) => (
+                  <g key={i}>
+                    <line x1={x(s)} x2={x(s)} y1={4} y2={H - 18} stroke="var(--border-strong)" strokeWidth={1} />
+                    <text x={x(s) + 4} y={H - 20} fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>S{i + 2}</text>
+                  </g>
+                ))}
+                {corners?.map((c) => (
+                  <text key={c.label} x={x(c.d)} y={box("speed").top - 9} textAnchor="middle" fill="var(--muted)" fontFamily="var(--mono)" fontSize={9}>{c.label}</text>
+                ))}
+                {/* Speed */}
+                {[speedMin, (speedMin + speedMax) / 2, speedMax].map((v) => (
+                  <g key={v}>
+                    <line x1={LEFT} x2={RIGHT} y1={scale(box("speed"), v, speedMin, speedMax)} y2={scale(box("speed"), v, speedMin, speedMax)} stroke="#2e3542" strokeWidth={1} />
+                    <text x={LEFT - 8} y={scale(box("speed"), v, speedMin, speedMax) + 4} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{v}</text>
+                  </g>
+                ))}
+                {ta && <path d={path(ta, "speed", speedMin, speedMax)} fill="none" stroke={colour(a.driver)} strokeWidth={2} strokeLinejoin="round" />}
+                {tb && b && <path d={path(tb, "speed", speedMin, speedMax)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" />}
+                {/* Gap: above the line, A is ahead. */}
+                {delta && (
+                  <g>
+                    <line x1={LEFT} x2={RIGHT} y1={scale(box("delta"), 0, -deltaMax, deltaMax)} y2={scale(box("delta"), 0, -deltaMax, deltaMax)} stroke="var(--border-strong)" strokeWidth={1} />
+                    <text x={LEFT - 8} y={box("delta").top + 8} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>+{deltaMax.toFixed(1)}</text>
+                    <text x={LEFT - 8} y={box("delta").bottom} textAnchor="end" fill="var(--muted)" fontFamily="var(--mono)" fontSize={10}>−{deltaMax.toFixed(1)}</text>
+                    <path d={delta.d.map((d, i) => `${i ? "L" : "M"}${x(d).toFixed(1)} ${scale(box("delta"), delta.delta[i], -deltaMax, deltaMax).toFixed(1)}`).join("")} fill="none" stroke="var(--text)" strokeWidth={2} strokeLinejoin="round" />
+                    <text x={RIGHT} y={box("delta").top + 10} textAnchor="end" fill="var(--muted)" fontFamily="var(--sans)" fontSize={11}>↑ {nameA} ahead</text>
+                    <text x={RIGHT} y={box("delta").bottom - 4} textAnchor="end" fill="var(--muted)" fontFamily="var(--sans)" fontSize={11}>↓ {nameB} ahead</text>
+                  </g>
+                )}
+                {ta && <path d={path(ta, "throttle", 0, 100)} fill="none" stroke={colour(a.driver)} strokeWidth={2} strokeLinejoin="round" />}
+                {tb && b && <path d={path(tb, "throttle", 0, 100)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" />}
+                {/* Brake: one strip per lap. */}
+                {[ta, tb].map((lap, i) =>
+                  lap ? (
+                    <g key={i}>
+                      {brakeRuns(lap).map(([from, to]) => (
+                        <rect key={from} x={x(from)} y={box("brake").top + i * (box("brake").h / 2) + 1} width={Math.max(1.5, x(to) - x(from))} height={box("brake").h / 2 - 3} rx={2} fill={i ? "none" : colour(lap.driver)} stroke={i ? colour(lap.driver) : "none"} strokeWidth={i ? 1.5 : 0} />
+                      ))}
+                    </g>
+                  ) : null,
+                )}
+                {ta && <path d={path(ta, "gear", 1, 8, true)} fill="none" stroke={colour(a.driver)} strokeWidth={2} />}
+                {tb && b && <path d={path(tb, "gear", 1, 8, true)} fill="none" stroke={colour(b.driver)} strokeWidth={2} strokeDasharray="6 4" />}
+                {kmTicks.map((d) => <text key={d} x={x(d)} y={H - 4} textAnchor="middle" fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{d / 1000} km</text>)}
+                {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={4} y2={H - 18} stroke="var(--muted)" strokeWidth={1} strokeDasharray="3 3" />}
+                <rect x={LEFT} y={0} width={RIGHT - LEFT} height={H - 18} fill="transparent" {...pointer.props(onMove)} />
+              </svg>
+              {hover !== null && (
+                <div className="tooltip" style={{ left: `${Math.min(84, Math.max(16, (x(hover) / W) * 100))}%` }} role="status">
+                  <div className="hd" style={{ marginBottom: 4 }}>{Math.round(hover)} m</div>
+                  {both.map((lap, i) => (
+                    <div key={i} className="tooltip-row" style={{ fontSize: 14 }}>
+                      <span className="bar" style={{ background: colour(lap.driver), height: 12, width: 3 }} />
+                      <span>{code(lap.driver)} L{lap.lap}</span>
+                      <span className="num" style={{ marginLeft: "auto" }}>
+                        {Math.round(valueAt(lap, "speed", hover))} km/h · {Math.round(valueAt(lap, "throttle", hover))}% · G{valueAt(lap, "gear", hover)}
+                        {valueAt(lap, "brake", hover) ? " · brake" : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {deltaAt(hover) !== null && <div className="note">{Math.abs(deltaAt(hover)!) < 0.005 ? "Level" : `${deltaAt(hover)! > 0 ? nameA : nameB} ahead by ${Math.abs(deltaAt(hover)!).toFixed(2)} s`}</div>}
+                </div>
+              )}
+            </div>
           </div>
           <p className="note">
             Car data comes about four times a second, so at top speed the samples are some 20 m apart: braking points and slowest speeds are good to a few metres and km/h. Times are pinned to the official lap and sector times, so the gap is exact at each sector line and good to about a tenth of a second in between. The brake channel is only on or off.

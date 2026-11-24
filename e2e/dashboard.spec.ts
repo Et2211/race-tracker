@@ -296,3 +296,31 @@ test("driver focus shows the selected driver's race so far", async ({ page }) =>
   const corners = await new AxeBuilder({ page }).include("#driver-focus").analyze();
   expect(corners.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 });
+
+test("a chart can be read by tapping it on a phone, without selecting text", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "needs a touch screen");
+  await page.goto("/session/11369?t=2026-09-13T13:12:27Z");
+  await loaded(page);
+  const panel = page.getByRole("region", { name: "Driver focus" });
+  await page.getByRole("table", { name: /Race order/ }).locator('[data-driver="12"]').first().click();
+  await panel.getByRole("button", { name: "Race pace" }).click();
+
+  const chart = panel.locator(".chart-wrap");
+  await expect(chart).toHaveCSS("user-select", "none");
+  const area = (await chart.locator(".chart-hit").boundingBox())!;
+  const x = area.x + area.width / 2;
+  await page.touchscreen.tap(x, area.y + area.height / 2);
+
+  // The point stays up after the finger lifts, and the tooltip sits over the line it describes
+  // (the chart is wider than the screen, so its tooltip is placed against the chart, not the screen).
+  const tooltip = chart.locator(".tooltip");
+  await expect(tooltip).toBeVisible();
+  const box = (await tooltip.boundingBox())!;
+  const line = (await chart.locator("svg line[stroke-dasharray='3 3']").last().boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - line.x)).toBeLessThan(2);
+  expect(await page.evaluate(() => String(getSelection()))).toBe("");
+
+  // Touching anywhere else puts it away.
+  await page.touchscreen.tap(4, 300);
+  await expect(tooltip).toHaveCount(0);
+});
