@@ -324,3 +324,16 @@ test("a chart can be read by tapping it on a phone, without selecting text", asy
   await page.touchscreen.tap(4, 300);
   await expect(tooltip).toHaveCount(0);
 });
+
+test("sessions the app does not list are refused without a download, and crawlers are kept off the API", async ({ request }) => {
+  for (const path of ["/api/sessions/1234567/meta", "/api/sessions/1234567/chunks/0", "/api/sessions/1234567/corners"]) {
+    const res = await request.get(path);
+    expect(res.status(), path).toBe(404);
+    expect((await res.json()).code, path).toBe("unknown");
+    expect(res.headers()["cache-control"], path).toContain("s-maxage=300");
+  }
+  // A listed session still opens.
+  expect((await request.get("/api/sessions/11369/meta")).status()).toBe(200);
+  const robots = await (await request.get("/robots.txt")).text();
+  expect(robots).toContain("Disallow: /api/");
+});

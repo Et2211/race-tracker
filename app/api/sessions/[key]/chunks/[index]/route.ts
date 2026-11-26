@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
-import { badRequest, errorJson, storedJson, parseKey } from "@/lib/session/http";
-import { ensureChunk, storedChunk } from "@/lib/session/source";
+import { badRequest, errorJson, parseKey, storedJson, unknownSession } from "@/lib/session/http";
+import { ensureChunk, isKnownSession, storedChunk } from "@/lib/session/source";
 
 // One 15-minute window: two OpenF1 requests of up to ~10 MB each.
 export const maxDuration = 300;
@@ -13,6 +13,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/sessions/[key]/
   if (k === null || i === null) return badRequest("Bad request");
   try {
     const stored = await storedChunk(k, i);
+    if (!stored && !(await isKnownSession(k))) return unknownSession();
     const raw = stored ?? gzipSync(JSON.stringify(await ensureChunk(k, i)));
     const res = await storedJson(raw, "immutable");
     // Where it came from, so the browser knows whether asking for several at once is cheap
