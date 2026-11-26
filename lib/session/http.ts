@@ -18,14 +18,21 @@ const gunzipAsync = promisify(gunzip);
  *    hour at the CDN, then served stale while refreshed.
  * URLs carry the data format version, so a format change never reads a stale copy.
  */
-export async function storedJson(body: Buffer, cache: "meta" | "immutable"): Promise<Response> {
+export async function storedJson(body: Buffer, cache: "meta" | "immutable" | "provisional"): Promise<Response> {
   return new Response(new Uint8Array(await gunzipAsync(body)), {
     headers: {
       "content-type": "application/json",
-      "cache-control": cache === "immutable" ? "public, max-age=31536000, s-maxage=31536000, immutable" : "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+      "cache-control": CACHE[cache],
     },
   });
 }
+
+const CACHE = {
+  immutable: "public, max-age=31536000, s-maxage=31536000, immutable",
+  meta: "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+  /** Practice built before OpenF1 has settled: shared for a minute, so nobody keeps an incomplete copy. */
+  provisional: "public, max-age=0, s-maxage=60",
+} as const;
 
 /** Errors are never cached: the next request should try again. */
 const noStore = { "Cache-Control": "no-store" };

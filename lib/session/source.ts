@@ -6,10 +6,10 @@ import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
 import type { CircuitCorners } from "@/lib/driver/corners";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
-import { buildCatalog, FIRST_YEAR, withStatus, type Catalog } from "./catalog";
+import { buildCatalog, FIRST_YEAR, SETTLE_MS, withStatus, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
-import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, practiceChunkKey, practiceMetaKey, storedSessionMeta } from "./ingest";
+import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, practiceChunkKey, practiceMetaKey, rememberedPractice, storedSessionMeta } from "./ingest";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 /** "fixtures" serves only the recorded sessions and never touches the network. */
@@ -47,6 +47,17 @@ async function cachedCatalog(year: number): Promise<Catalog> {
     throw e;
   }
 }
+
+/**
+ * A practice session built before OpenF1 has settled (3 hours after the end): it isn't kept, and
+ * the CDN must not keep it either, or early viewers' incomplete copy would outlive the fix.
+ */
+export function provisional(meta: SessionMeta | null): boolean {
+  return !!meta && meta.kind === "practice" && Date.parse(meta.session.date_end) + SETTLE_MS > Date.now();
+}
+
+/** Whether a session's data was just built provisionally (see `provisional`), from what this instance remembers. */
+export const builtProvisionally = (sessionKey: number) => provisional(rememberedPractice(sessionKey));
 
 /** How long one server instance trusts its list of known sessions. */
 const KNOWN_MS = 10 * 60_000;

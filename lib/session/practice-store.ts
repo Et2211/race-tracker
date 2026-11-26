@@ -9,7 +9,8 @@ import { getStore } from "@/lib/storage/store";
  * session opened again after that is simply downloaded and kept again.
  */
 export const PRACTICE_KEEP_DAYS = 7;
-const CAP_BYTES = Number(process.env.PRACTICE_CAP_MB ?? 150) * 1024 * 1024;
+/** Sessions are capped at 900 MB (STORE_CAP_MB); this keeps both inside Supabase's free 1 GB. */
+const CAP_BYTES = Number(process.env.PRACTICE_CAP_MB ?? 80) * 1024 * 1024;
 const FOLDER = "practice";
 
 export type PracticePrune = { kept: number; removed: number; bytes: number };
