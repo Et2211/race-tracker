@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import { refreshCalendar } from "@/lib/session/calendar";
 import { refreshSeason } from "@/lib/home/data";
 import { clearDownloadedLive, fillStandings, retryMultiViewer } from "@/lib/session/maintenance";
+import { prunePractice } from "@/lib/session/practice-store";
 import { cronAuthorized } from "@/lib/session/cron-auth";
 import { errorJson } from "@/lib/session/http";
 import { supabaseConfigured } from "@/lib/storage/supabase";
@@ -10,8 +11,8 @@ export const maxDuration = 300;
 
 /**
  * Daily: copy this season's (and, from December, next season's) schedule into the calendar, then
- * upkeep: championship tables not cached yet, live rows of sessions since downloaded, and
- * MultiViewer circuit files for recent sessions that missed them.
+ * upkeep: championship tables not cached yet, live rows of sessions since downloaded, MultiViewer
+ * circuit files for recent sessions that missed them, and practice replays kept over a week.
  */
 export async function GET(req: Request) {
   await connection();
@@ -28,7 +29,8 @@ export async function GET(req: Request) {
     const liveCleared = await attempt(clearDownloadedLive);
     const multiviewer = await attempt(retryMultiViewer);
     const home = await attempt(() => refreshSeason(now.getUTCFullYear()));
-    return Response.json({ sessions, standings, liveCleared, multiviewer, home: home ?? "refreshed" });
+    const practice = await attempt(() => prunePractice());
+    return Response.json({ sessions, standings, liveCleared, multiviewer, home: home ?? "refreshed", practice });
   } catch (e) {
     return errorJson(e);
   }

@@ -9,7 +9,7 @@ import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { buildCatalog, FIRST_YEAR, withStatus, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
-import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, storedSessionMeta } from "./ingest";
+import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, practiceChunkKey, practiceMetaKey, storedSessionMeta } from "./ingest";
 import type { SessionMeta, TelemetryChunk } from "./types";
 
 /** "fixtures" serves only the recorded sessions and never touches the network. */
@@ -93,7 +93,8 @@ export async function storedMeta(sessionKey: number): Promise<Buffer | null> {
     return meta ? gzipSync(JSON.stringify(meta)) : null;
   }
   const raw = await getStore().getRaw(metaKey(sessionKey));
-  if (!raw) return null;
+  // Practice kept for a while (practice-store.ts), served as it was built.
+  if (!raw) return getStore().getRaw(practiceMetaKey(sessionKey));
   const meta = JSON.parse(gunzipSync(raw).toString("utf8")) as SessionMeta;
   if (meta.marshal.source === "multiviewer") return raw;
   // Learned sector positions grow after a session is stored; apply the current ones.
@@ -108,7 +109,7 @@ export async function storedChunk(sessionKey: number, index: number): Promise<Bu
     const chunk = await fixtureChunk(sessionKey, index);
     return chunk ? gzipSync(JSON.stringify(chunk)) : null;
   }
-  return getStore().getRaw(chunkKey(sessionKey, index));
+  return (await getStore().getRaw(chunkKey(sessionKey, index))) ?? (await getStore().getRaw(practiceChunkKey(sessionKey, index)));
 }
 
 export async function ensureMeta(sessionKey: number): Promise<SessionMeta> {

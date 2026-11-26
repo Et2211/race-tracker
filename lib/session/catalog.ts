@@ -12,7 +12,7 @@ export type CatalogSession = {
   upcoming: boolean;
   /** Already downloaded into the store, so it opens without contacting OpenF1. */
   downloaded: boolean;
-  /** Practice: never stored; a replay is fetched from OpenF1 each time it is opened. */
+  /** Practice: not stored for good; a replay is kept for a week after someone first opens it (practice-store.ts). */
   notStored?: boolean;
 };
 export type CatalogMeeting = {
@@ -30,15 +30,15 @@ export type Catalog = { year: number; meetings: CatalogMeeting[]; fetchedAt: str
 
 export const FIRST_YEAR = 2023;
 export const PICKER_SESSIONS = ["Sprint Qualifying", "Sprint", "Qualifying", "Race"];
-/** Practice: on the calendar, followed live, and opened as a replay straight from OpenF1, never stored (owner's decision). */
+/** Practice: on the calendar, followed live, and opened as a replay that is kept for a week, not for good (owner's decision). */
 export const isPractice = (s: { session_type?: string; type?: string }) => (s.session_type ?? s.type) === "Practice";
 
 /** OpenF1 keeps adding results and pit data for a few hours after a session ends. */
 export const SETTLE_MS = 3 * 60 * 60_000;
 /**
  * When a session's replay opens, after its end. Stored sessions wait until OpenF1 has settled, so
- * what is kept is complete. Practice is never stored (rebuilt from OpenF1 on every opening), so
- * nothing is gained by waiting: it opens when live coverage stops, 30 minutes after the end.
+ * what is kept is complete. Practice opens when live coverage stops, 30 minutes after the end:
+ * until it has settled each opening builds it afresh, and only then is it kept (for a week).
  */
 export const replayAfter = (practice: boolean) => (practice ? 30 * 60_000 : SETTLE_MS);
 
