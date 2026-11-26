@@ -2,6 +2,7 @@ import "server-only";
 
 import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import { accessToken, BASE, dropToken, openf1Credentials } from "./auth";
+import { BackgroundGate } from "./lanes";
 
 /**
  * Server-side OpenF1 client. Historical data needs no credentials. OpenF1 allows 3 requests a
@@ -73,7 +74,38 @@ export function query(params: Params): string {
     .join("&");
 }
 
+/** Spacing of this instance's background requests while a session is live (see lanes.ts). */
+const BACKGROUND_GAP_MS = 1500;
+const gate = new BackgroundGate(BACKGROUND_GAP_MS);
+
+/** Whether a session is on now (the calendar's live window), asked at most every 30 s; false without Supabase. */
+let liveCache: { at: number; value: Promise<boolean> } | null = null;
+function liveNow(): Promise<boolean> {
+  if (!supabaseConfigured()) return Promise.resolve(false);
+  if (!liveCache || Date.now() - liveCache.at > 30_000) {
+    const value = Promise.resolve(supabase().rpc("live_session_now")).then(
+      ({ data, error }) => !error && Array.isArray(data) && data.length > 0,
+      () => false,
+    );
+    liveCache = { at: Date.now(), value };
+  }
+  return liveCache.value;
+}
+
+/**
+ * A request for anything but live timing: downloads, calendars, standings. While a session is
+ * live these go out one at a time per instance, so they never queue ahead of the live relay.
+ */
 export async function openf1<T>(endpoint: string, params: Params = {}, attempts = 5): Promise<T[]> {
+  return gate.run(await liveNow(), () => request<T>(endpoint, params, attempts));
+}
+
+/** A request for live timing (the relay filling a gap, a live session opening): never held back. */
+export function openf1Live<T>(endpoint: string, params: Params = {}, attempts = 5): Promise<T[]> {
+  return request<T>(endpoint, params, attempts);
+}
+
+async function request<T>(endpoint: string, params: Params, attempts: number): Promise<T[]> {
   const url = `${BASE}/${endpoint}?${query(params)}`;
   for (let attempt = 0; ; attempt++) {
     const last = attempt + 1 >= attempts;

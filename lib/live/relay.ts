@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import mqtt from "mqtt";
 import { accessToken, openf1Credentials } from "@/lib/openf1/auth";
-import { openf1, TooMuchDataError } from "@/lib/openf1/client";
+import { openf1Live, TooMuchDataError } from "@/lib/openf1/client";
 import type { CarDataRow, LocationRow } from "@/lib/openf1/types";
 import { BucketCollector, bucketsFromRows, encodeBucket, type StoredBucket } from "./buckets";
 import type { LiveRowWrite, LiveStore } from "./store";
@@ -185,7 +185,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function restRange<T>(endpoint: string, sessionKey: number, from: number, to: number, depth = 0): Promise<T[]> {
   try {
-    return await openf1<T>(endpoint, { session_key: sessionKey, "date>=": new Date(from * 1000).toISOString(), "date<": new Date(to * 1000).toISOString() });
+    return await openf1Live<T>(endpoint, { session_key: sessionKey, "date>=": new Date(from * 1000).toISOString(), "date<": new Date(to * 1000).toISOString() });
   } catch (e) {
     if (!(e instanceof TooMuchDataError) || depth >= 4 || to - from < 2) throw e;
     const mid = Math.floor((from + to) / 2);
@@ -210,7 +210,7 @@ async function fillGap(store: LiveStore, sessionKey: number, from: number, to: n
   // Records have no _id over REST: they fill rows the feed has not delivered, or fields it has not.
   for (const topic of ROW_TOPICS) {
     try {
-      const rows = await openf1<Record<string, unknown>>(topic, { session_key: sessionKey });
+      const rows = await openf1Live<Record<string, unknown>>(topic, { session_key: sessionKey });
       const writes = rows.flatMap((row): LiveRowWrite[] => {
         const key = rowKey(topic, row);
         return key ? [{ topic, key, msg_id: null, payload: row }] : [];

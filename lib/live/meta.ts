@@ -1,5 +1,5 @@
 import "server-only";
-import { openf1 } from "@/lib/openf1/client";
+import { openf1Live } from "@/lib/openf1/client";
 import type { Meeting, Session } from "@/lib/openf1/types";
 import { assembleMeta, qualifyingFor } from "@/lib/session/assemble";
 import { learnedSectors, metaKey, multiviewerCircuit, referenceOutline } from "@/lib/session/ingest";
@@ -14,9 +14,9 @@ function sessionInfo(sessionKey: number) {
   let p = infoCache.get(sessionKey);
   if (!p) {
     p = (async () => {
-      const [session] = await openf1<Session>("sessions", { session_key: sessionKey });
+      const [session] = await openf1Live<Session>("sessions", { session_key: sessionKey });
       if (!session) throw new Error(`OpenF1 has no session ${sessionKey}`);
-      const [[meeting], meetingSessions] = await Promise.all([openf1<Meeting>("meetings", { meeting_key: session.meeting_key }), openf1<Session>("sessions", { meeting_key: session.meeting_key })]);
+      const [[meeting], meetingSessions] = await Promise.all([openf1Live<Meeting>("meetings", { meeting_key: session.meeting_key }), openf1Live<Session>("sessions", { meeting_key: session.meeting_key })]);
       return { session, meeting: meeting ?? ({ meeting_key: session.meeting_key, meeting_name: session.circuit_short_name, circuit_key: session.circuit_key, year: session.year } as unknown as Meeting), meetingSessions };
     })();
     p.catch(() => setTimeout(() => infoCache.delete(sessionKey), 60_000));
