@@ -1,7 +1,7 @@
 import "server-only";
 import { openf1Credentials } from "@/lib/openf1/auth";
 import { notLiveReason, type NotLive } from "./not-live";
-import { liveStore, type LiveStatus } from "./store";
+import { liveStore, type LiveStatus, type LiveStore } from "./store";
 
 export type LiveStatusView = LiveStatus & { configured: boolean; now: number };
 
@@ -17,8 +17,8 @@ export async function liveContext(params: Promise<{ key: string }>) {
   return { sessionKey, store: liveStore() };
 }
 
-export async function statusView(sessionKey: number): Promise<LiveStatusView> {
-  return { ...(await liveStore().status(sessionKey)), configured: openf1Credentials() !== null, now: Date.now() };
+export async function statusView(sessionKey: number, store: LiveStore = liveStore()): Promise<LiveStatusView> {
+  return { ...(await store.status(sessionKey)), configured: openf1Credentials() !== null, now: Date.now() };
 }
 
 /** Live data changes every second: never cache it. */

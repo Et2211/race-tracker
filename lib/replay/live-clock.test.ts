@@ -11,9 +11,9 @@ describe("live clock", () => {
   it("holds the paused time", () => expect(liveTime(100_000, 0, 95_000, 80_000)).toBe(80_000));
 
   it("places the clock inside the margins when it opens", () => {
-    // Opening, with no delay yet, puts the clock 10 s past the data: it is set 2.25 s behind it at once.
+    // Opening, with no delay yet, puts the clock 10 s past the data: it is set 3.75 s behind it at once.
     const d = smoothedDelay(100_000, 0, 90_000);
-    expect(90_000 - (100_000 - d)).toBe(2250);
+    expect(90_000 - (100_000 - d)).toBe(3750);
     // A delay already behind the data is left alone (a synced stream's delay stays put).
     expect(smoothedDelay(100_000, 40_000, 90_000)).toBe(40_000);
   });
@@ -36,7 +36,7 @@ describe("live clock", () => {
   });
 
   it("leaves the clock alone between the margins, and eases it back in from outside", () => {
-    expect(smoothedDelay(100_000, 12_000, 90_000, 100, 0)).toBe(12_000); // 2 s behind the data
+    expect(smoothedDelay(100_000, 13_500, 90_000, 100, 0)).toBe(13_500); // 3.5 s behind the data
     expect(smoothedDelay(100_000, 11_000, 90_000, 100, 0)).toBe(11_020); // 1 s: closer than the low margin
     expect(smoothedDelay(100_000, 16_000, 90_000, 100, 0)).toBe(15_980); // 6 s: further than the high margin
     expect(smoothedDelay(100_000, 16_000, 90_000, 100, null)).toBe(16_000); // scrolled back or resumed after a pause
@@ -46,9 +46,9 @@ describe("live clock", () => {
     // Synced 5 s behind real time, but the data was 10 s behind, so the clock had to wait at 11 s.
     // The data has caught up (3 s behind): back towards 5 s.
     expect(smoothedDelay(100_000, 11_000, 97_000, 100, 5_000)).toBe(10_980);
-    // Within a quarter second of the synced delay: stays put.
-    expect(smoothedDelay(100_000, 5_100, 97_000, 100, 5_000)).toBe(5_100);
+    // The data is 1 s behind and the clock within a quarter second of the synced delay: stays put.
+    expect(smoothedDelay(100_000, 5_100, 99_000, 100, 5_000)).toBe(5_100);
     // The data is still 10 s behind: it runs no closer to it than the low margin, whatever the synced delay.
-    expect(smoothedDelay(100_000, 11_500, 90_000, 100, 5_000)).toBe(11_500);
+    expect(smoothedDelay(100_000, 13_000, 90_000, 100, 5_000)).toBe(13_000);
   });
 });
