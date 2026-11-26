@@ -6,7 +6,7 @@ import { sessionIndex } from "@/lib/storage/session-index";
 import { getStore, readJson, writeJson } from "@/lib/storage/store";
 import type { CircuitCorners } from "@/lib/driver/corners";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
-import { buildCatalog, withStatus, type Catalog } from "./catalog";
+import { buildCatalog, FIRST_YEAR, withStatus, type Catalog } from "./catalog";
 import { fixtureChunk, fixtureMeetings, fixtureMeta, fixtureSessions } from "./fixtures";
 import { marshalSectors } from "./assemble";
 import { chunkKey, ingestMeta, ingestWindow, learnedSectors, metaKey, multiviewerCircuit, storedSessionMeta } from "./ingest";
@@ -45,6 +45,35 @@ async function cachedCatalog(year: number): Promise<Catalog> {
     // OpenF1 down or rate-limiting: an older list is better than none (it is refreshed next time).
     if (cached) return cached;
     throw e;
+  }
+}
+
+/** How long one server instance trusts its list of known sessions. */
+const KNOWN_MS = 10 * 60_000;
+let known: { at: number; keys: Promise<Set<number>> } | null = null;
+
+/**
+ * Whether the app lists this session (any season from 2023, as the calendar shows it, practice
+ * included). Anything else is never looked up on OpenF1, so made-up numbers in the URL cannot use
+ * up the shared OpenF1 budget that live timing depends on. The season lists are themselves cached;
+ * if they cannot be read at all, the answer is yes rather than turning real sessions away.
+ */
+export async function isKnownSession(sessionKey: number): Promise<boolean> {
+  if (dataMode() === "fixtures") return (await fixtureSessions()).some((s) => s.session_key === sessionKey);
+  if (!known || Date.now() - known.at > KNOWN_MS) {
+    const now = new Date();
+    const last = now.getUTCFullYear() + (now.getUTCMonth() === 11 ? 1 : 0); // next season's calendar appears in December
+    const years = Array.from({ length: last - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);
+    const keys = Promise.all(years.map((y) => cachedCatalog(y))).then((catalogs) => new Set(catalogs.flatMap((c) => c.meetings.flatMap((m) => m.sessions.map((s) => s.sessionKey)))));
+    known = { at: Date.now(), keys };
+    keys.catch(() => {
+      if (known?.keys === keys) known = null;
+    });
+  }
+  try {
+    return (await known.keys).has(sessionKey);
+  } catch {
+    return true;
   }
 }
 

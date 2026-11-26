@@ -39,6 +39,14 @@ export function errorJson(e: unknown): Response {
   return Response.json({ error: e instanceof Error ? e.message : "Unexpected error", code: "failed" }, { status: 502, headers: noStore });
 }
 
+/**
+ * A session the app does not list: answered without asking OpenF1, and shared by the CDN for a
+ * few minutes so a script trying numbers costs the server little.
+ */
+export function unknownSession(): Response {
+  return Response.json({ error: "There is no such session.", code: "unknown" }, { status: 404, headers: { "Cache-Control": "public, max-age=300, s-maxage=300" } });
+}
+
 /** A request the server will not answer (bad key): not cached either. */
 export function badRequest(message: string): Response {
   return Response.json({ error: message }, { status: 400, headers: noStore });

@@ -1,0 +1,5 @@
+# Pages may be crawled. The API may not: a crawler that renders a session page would otherwise
+# make the server download sessions from OpenF1 on its behalf.
+User-Agent: *
+Allow: /
+Disallow: /api/
