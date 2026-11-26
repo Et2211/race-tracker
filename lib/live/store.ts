@@ -19,8 +19,13 @@ export interface LiveStore {
   putBuckets(sessionKey: number, buckets: StoredBucket[]): Promise<number>;
   /** At most LIVE_PAGE rows changed after `rev`, oldest change first. */
   rowsSince(sessionKey: number, rev: number): Promise<LiveRowRead[]>;
-  /** At most LIVE_PAGE seconds of car data written or improved after `rev`, oldest change first. */
-  bucketsSince(sessionKey: number, rev: number): Promise<LiveBucketRead[]>;
+  /** At most `limit` (default LIVE_PAGE) seconds of car data written or improved after `rev`, oldest change first. */
+  bucketsSince(sessionKey: number, rev: number, limit?: number): Promise<LiveBucketRead[]>;
+  /**
+   * Where the shared live tick starts: one below the oldest revision among the newest `seconds`
+   * seconds of car data, so the tick holds roughly that many seconds of changes; 0 with none yet.
+   */
+  windowStart(sessionKey: number, seconds: number): Promise<number>;
   bucketsBetween(sessionKey: number, from: number, to: number): Promise<{ second: number; data: string }[]>;
   status(sessionKey: number): Promise<LiveStatus>;
   heartbeat(beat: Heartbeat): Promise<void>;
@@ -49,9 +54,24 @@ class SupabaseLiveStore implements LiveStore {
     const rows = await this.rpc<LiveRowRead[]>("live_rows_since", { p_session_key: sessionKey, p_rev: rev, p_limit: LIVE_PAGE });
     return rows.map((r) => ({ ...r, rev: Number(r.rev) }));
   }
-  async bucketsSince(sessionKey: number, rev: number) {
-    const rows = await this.rpc<LiveBucketRead[]>("live_buckets_since", { p_session_key: sessionKey, p_rev: rev, p_limit: LIVE_PAGE });
+  async bucketsSince(sessionKey: number, rev: number, limit = LIVE_PAGE) {
+    const rows = await this.rpc<LiveBucketRead[]>("live_buckets_since", { p_session_key: sessionKey, p_rev: rev, p_limit: limit });
     return rows.map((r) => ({ second: Number(r.second), data: r.data, rev: Number(r.rev) }));
+  }
+  async windowStart(sessionKey: number, seconds: number) {
+    const last = await supabase().from("live_buckets").select("second").eq("session_key", sessionKey).order("second", { ascending: false }).limit(1).maybeSingle();
+    if (last.error) throw new Error(`live_buckets: ${last.error.message}`);
+    if (!last.data) return 0;
+    const oldest = await supabase()
+      .from("live_buckets")
+      .select("rev")
+      .eq("session_key", sessionKey)
+      .gte("second", Number(last.data.second) - seconds + 1)
+      .order("rev", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (oldest.error) throw new Error(`live_buckets: ${oldest.error.message}`);
+    return oldest.data ? Math.max(0, Number(oldest.data.rev) - 1) : 0;
   }
   async bucketsBetween(sessionKey: number, from: number, to: number) {
     const rows = await this.rpc<{ second: number; data: string }[]>("live_buckets_between", { p_session_key: sessionKey, p_from: from, p_to: to });
@@ -137,12 +157,18 @@ class MemoryLiveStore implements LiveStore {
       .slice(0, LIVE_PAGE)
       .map(({ topic, key, payload, rev: r }) => ({ topic, key, payload, rev: r }));
   }
-  async bucketsSince(sessionKey: number, rev: number) {
+  async bucketsSince(sessionKey: number, rev: number, limit = LIVE_PAGE) {
     return [...this.buckets.values()]
       .filter((b) => b.sessionKey === sessionKey && b.rev > rev)
       .sort((a, b) => a.rev - b.rev)
-      .slice(0, LIVE_PAGE)
+      .slice(0, limit)
       .map(({ second, data, rev: r }) => ({ second, data, rev: r }));
+  }
+  async windowStart(sessionKey: number, seconds: number) {
+    const mine = [...this.buckets.values()].filter((b) => b.sessionKey === sessionKey);
+    if (mine.length === 0) return 0;
+    const last = Math.max(...mine.map((b) => b.second));
+    return Math.max(0, Math.min(...mine.filter((b) => b.second > last - seconds).map((b) => b.rev)) - 1);
   }
   async bucketsBetween(sessionKey: number, from: number, to: number) {
     return [...this.buckets.values()].filter((b) => b.sessionKey === sessionKey && b.second >= from && b.second < to).sort((a, b) => a.second - b.second).map(({ second, data }) => ({ second, data }));

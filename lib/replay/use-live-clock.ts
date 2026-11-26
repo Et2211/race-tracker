@@ -7,11 +7,12 @@ import type { Speed } from "./use-clock";
 export const LIVE_EDGE_MS = 3000;
 /**
  * The clock keeps its time between these two margins behind the newest data it knows of. The data
- * arrives in whole seconds, once per poll (a second plus the request), so what the clock knows of
- * can be two or three seconds stale between polls: a smaller margin lets the clock overtake it.
+ * arrives in whole seconds, once per poll (every two seconds plus the request), and the shared tick
+ * can itself be up to two seconds old when the CDN answers, so what the clock knows of is usually
+ * two to three seconds stale between polls: a smaller margin lets the clock overtake it.
  */
-const MARGIN_LOW_MS = 1500;
-const MARGIN_HIGH_MS = 3000;
+const MARGIN_LOW_MS = 3000;
+const MARGIN_HIGH_MS = 4500;
 /** How much faster or slower than real time the clock runs to get back inside the margins. */
 const SLEW = 0.2;
 

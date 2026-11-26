@@ -2,7 +2,8 @@
  * Live mode, end to end without an account or network: the fake OpenF1 replays the recorded
  * Madrid race (the lap-14 window) in real time. Three relays connect overlapping like the cron
  * job starts them; then nobody is connected for 20 s; then a fourth relay starts and must fill
- * that gap from REST. Meanwhile a viewer polls the store once a second as the browser does.
+ * that gap from REST. Meanwhile a viewer reads the shared tick every two seconds as the browser does,
+ * through a stand-in for the CDN that can answer with slightly old copies.
  * Checked against the source:
  *   - no second of car data with samples in the source is missing (hand-overs and the gap),
  *   - every stored second holds exactly the source's samples (nothing dropped or doubled),
@@ -65,7 +66,6 @@ try {
   const { liveStore } = await import("@/lib/live/store");
   const { decodeBucket } = await import("@/lib/live/buckets");
   const { accessToken } = await import("@/lib/openf1/auth");
-  const { LIVE_PAGE } = await import("@/lib/live/store");
   const store = liveStore();
   const SESSION = 11369;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -75,23 +75,43 @@ try {
   const RELAY_MS = Number(process.env.TEST_RELAY_MS ?? 25_000);
   const started = Date.now();
 
-  // A viewer, reading "changed since" as the live endpoints do.
-  const viewer = { rows: new Map<string, string>(), seconds: new Map<number, string>(), rowRev: 0, bucketRev: 0 };
+  // A viewer, reading the shared tick as the browser does: through a CDN that may answer with a
+  // copy up to two ticks old, in answers of at most 8 seconds of car data (the relay filling the
+  // gap below writes far more at once), following `?after=` when told to.
+  const { buildTick, sharedTick } = await import("@/lib/live/tick");
+  const { planTick } = await import("@/lib/live/sync");
+  const { rowKey } = await import("@/lib/live/topics");
+  type RowTopic = import("@/lib/live/topics").RowTopic;
+  type AnyTick = Awaited<ReturnType<typeof buildTick>>;
+  const cdn = new Map<string, AnyTick[]>();
+  let cdnStale = 2;
+  const viewer = { rows: new Map<string, string>(), seconds: new Map<number, string>(), cursors: { rows: 0, buckets: 0 }, behind: 0, continued: 0 };
   const poll = async () => {
-    for (;;) {
-      const page = await store.rowsSince(SESSION, viewer.rowRev);
-      for (const r of page) viewer.rows.set(`${r.topic}|${r.key}`, JSON.stringify(r.payload));
-      if (page.length) viewer.rowRev = page[page.length - 1].rev;
-      if (page.length < LIVE_PAGE) break;
+    let after: number | null = null;
+    for (let guard = 0; guard < 500; guard++) {
+      const fresh: AnyTick = after === null ? await sharedTick(store, SESSION, 8) : await buildTick(store, SESSION, after, 8);
+      const kept: AnyTick[] = [fresh, ...(cdn.get(String(after)) ?? [])].slice(0, 3);
+      cdn.set(String(after), kept);
+      const tick: AnyTick = kept[Math.floor(Math.random() * Math.min(kept.length, cdnStale + 1))];
+      const plan = planTick(viewer.cursors, tick);
+      if ("behind" in plan) {
+        viewer.behind++;
+        after = plan.next;
+        continue;
+      }
+      for (const r of plan.rows) viewer.rows.set(`${r.topic}|${rowKey(r.topic as RowTopic, r.payload)}`, JSON.stringify(r.payload));
+      for (const c of tick.chunks.filter((x) => x.rev > viewer.cursors.buckets)) viewer.seconds.set(c.chunk.from / 1000, JSON.stringify(c.chunk));
+      viewer.cursors = plan.cursors;
+      if (plan.next === null) return;
+      viewer.continued++;
+      after = plan.next;
     }
-    for (;;) {
-      const page = await store.bucketsSince(SESSION, viewer.bucketRev);
-      for (const b of page) viewer.seconds.set(b.second, b.data);
-      if (page.length) viewer.bucketRev = page[page.length - 1].rev;
-      if (page.length < LIVE_PAGE) break;
-    }
+    throw new Error("the viewer never caught up");
   };
-  const viewing = setInterval(() => void poll(), 1000);
+  let polling: Promise<unknown> = Promise.resolve();
+  const viewing = setInterval(() => {
+    polling = polling.then(poll).catch((e: unknown) => failures.push(`viewer: ${e instanceof Error ? e.message : e}`));
+  }, 2000);
 
   const relay = (at: number, ms: number) => async () => {
     await sleep(at);
@@ -103,7 +123,10 @@ try {
   reports.push(await relay(20_000, 20_000)());
   check(reports.at(-1)!.caughtUp !== null && reports.at(-1)!.caughtUp!.from <= gapFrom, "the relay after a gap filled it from REST");
   clearInterval(viewing);
+  await polling;
+  cdnStale = 0; // writes have stopped: the CDN's copies expire
   await poll();
+  check(viewer.continued > 0, `the viewer followed continuations when a tick could not hold everything (${viewer.continued} times; fell behind ${viewer.behind} times)`);
   console.log(`relays ran for ${Math.round((Date.now() - started) / 1000)} s; messages: ${reports.map((r) => r.messages).join(", ")}`);
   check(reports.every((r) => r.error === null), "every relay ended without an error");
 
@@ -135,8 +158,9 @@ try {
   check(wrong === 0, `every stored second holds exactly the source's samples (${wrong} of ${stored.size} differ)`);
 
   // The viewer saw everything, including seconds filled in behind its cursor.
+  const { piece } = await import("@/lib/live/tick");
   const allStored = await store.bucketsBetween(SESSION, status.firstSecond!, status.lastSecond! + 1);
-  const viewerMissing = allStored.filter((b) => viewer.seconds.get(b.second) !== b.data).length;
+  const viewerMissing = allStored.filter((b) => viewer.seconds.get(b.second) !== JSON.stringify(piece(b.second, b.data))).length;
   check(viewerMissing === 0, `the viewer received every stored second in its final version (${allStored.length} seconds, ${viewerMissing} missing or stale)`);
 
   // Laps: each finished lap once, final version.
