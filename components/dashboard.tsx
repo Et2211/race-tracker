@@ -178,7 +178,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
       <header className="masthead">
         <div>
           <Link href="/" className="back">← All sessions</Link>
-          <div className="hd" style={{ color: "var(--red-text)" }}><Link href="/" className="home-link">Race weekend dashboard</Link></div>
+          <div className="hd" style={{ color: "var(--red-text)" }}><Link href="/" className="home-link">Speed Trace</Link></div>
           <h1>{meta.meeting.meeting_name}</h1>
           <p>{meta.session.circuit_short_name} · {meta.session.session_name} · {year}</p>
         </div>

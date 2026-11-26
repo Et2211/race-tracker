@@ -80,7 +80,7 @@ export default function Home(props: PageProps<"/">) {
     <div className="page">
       <header className="masthead">
         <div>
-          <div className="hd" style={{ color: "var(--red-text)" }}>Race weekend dashboard</div>
+          <div className="hd" style={{ color: "var(--red-text)" }}>Speed Trace</div>
           <h1>Formula 1, live and replayed</h1>
           <p>Follow every session on a live track map with timing, gaps and flags, or replay any session since 2023.</p>
         </div>

@@ -1,6 +1,6 @@
-# Race Tracker
+# Speed Trace
 
-A personal Formula 1 session dashboard. Pick any race, sprint or qualifying session from 2023 onwards and replay it: track map with car positions and the three timing sectors, qualifying sector times by phase, race gaps and splits with a gap trend, and yellow-flag highlighting with an estimate of which cars stopped.
+An unofficial Formula 1 session dashboard. Pick any race, sprint or qualifying session from 2023 onwards and replay it: track map with car positions and the three timing sectors, qualifying sector times by phase, race gaps and splits with a gap trend, and yellow-flag highlighting with an estimate of which cars stopped.
 
 Personal, non-commercial use only. Not affiliated with Formula 1, the FIA, OpenF1 or MultiViewer.
 
