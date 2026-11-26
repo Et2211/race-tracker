@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   // Read at runtime by the API routes: recorded fixtures and learned marshal-sector positions.
   outputFileTracingIncludes: {
     "/api/**": ["./fixtures/openf1/**", "./data/**"],
+    // The share images' font, should they ever be built on request rather than at build time.
+    "/opengraph-image": ["./assets/fonts/**"],
+    "/twitter-image": ["./assets/fonts/**"],
   },
   partialPrefetching: true,
   turbopack: {

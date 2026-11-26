@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   applicationName: NAME,
   // What a shared link shows (X, messaging apps).
   openGraph: { siteName: NAME, title: NAME, description: DESCRIPTION, type: "website" },
-  twitter: { card: "summary", title: NAME, description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: NAME, description: DESCRIPTION },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
