@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SiteLinks } from "@/components/site-links";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { SeasonCalendar } from "@/components/home/calendar";
@@ -90,7 +91,7 @@ export default function Home(props: PageProps<"/">) {
           <Season {...props} />
         </Suspense>
       </main>
-      <footer className="footer">An unofficial fan site, not affiliated with Formula 1. Data from OpenF1 (CC BY-NC-SA 4.0).</footer>
+      <footer className="footer">An unofficial fan site, not affiliated with Formula 1. Data from OpenF1 (CC BY-NC-SA 4.0). <SiteLinks /></footer>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SiteLinks } from "@/components/site-links";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildSnapshot, buildStatic } from "@/lib/dashboard/snapshot";
 import type { CarDot } from "@/lib/dashboard/model";
@@ -399,7 +400,7 @@ function Loaded({ loader, meta, initialTime, onPlayhead, mode }: { loader: Loade
 
       </main>
       <footer className="footer">
-        Data: OpenF1 (unofficial, not affiliated with Formula 1; CC BY-NC-SA 4.0). Track outline drawn from OpenF1 car positions; marshal-sector limits from MultiViewer circuit data where available. Stopped-car detection is calculated here from car speed and position, not reported by the stewards. Lap data has no deleted-lap flag; laps are removed using race-control deletion messages.
+        Data: OpenF1 (unofficial, not affiliated with Formula 1; CC BY-NC-SA 4.0). Track outline drawn from OpenF1 car positions; marshal-sector limits from MultiViewer circuit data where available. Stopped-car detection is calculated here from car speed and position, not reported by the stewards. Lap data has no deleted-lap flag; laps are removed using race-control deletion messages. <SiteLinks />
       </footer>
     </div>
   );
