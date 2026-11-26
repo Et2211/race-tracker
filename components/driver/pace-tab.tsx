@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useChartPointer } from "@/components/use-chart-pointer";
 import type { StaticView } from "@/lib/dashboard/snapshot";
 import type { PaceLap, StintPace } from "@/lib/driver/pace";
 import { formatLapTime } from "@/lib/timing/format";
@@ -29,6 +30,7 @@ function trendText(trend: number | null): string {
 
 export function PaceTab({ main, rival, rivals, onRival, view }: { main: PaceSeries; rival: PaceSeries | null; rivals: number[]; onRival: (driver: number) => void; view: StaticView }) {
   const [hover, setHover] = useState<number | null>(null);
+  const pointer = useChartPointer(hover !== null, () => setHover(null));
   const series = rival ? [main, rival] : [main];
   const code = (n: number) => view.drivers[n]?.code ?? `#${n}`;
   const colour = (n: number) => view.drivers[n]?.colour ?? "var(--muted)";
@@ -80,77 +82,79 @@ export function PaceTab({ main, rival, rivals, onRival, view }: { main: PaceSeri
       </div>
 
       <div className="chart-wrap" tabIndex={0} role="region" aria-label="Lap time chart">
-        <svg viewBox={`0 0 ${W} ${H}`} className="map" role="img" aria-label={`Lap times of ${series.map((s) => code(s.driver)).join(" and ")} by lap. The stint table below gives each stint's typical lap and trend.`}>
-          <g stroke="#2e3542" strokeWidth={1}>
-            {ticks.map((v) => <line key={v} x1={LEFT} x2={RIGHT} y1={y(v)} y2={y(v)} />)}
-          </g>
-          <g fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>
-            {ticks.map((v) => <text key={v} x={LEFT - 8} y={y(v) + 4} textAnchor="end">{tick(v)}</text>)}
-            {lapTicks.map((l) => <text key={l} x={x(l)} y={H - 6} textAnchor="middle">L{l}</text>)}
-          </g>
-          {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={TOP} y2={BOTTOM} stroke="var(--muted)" strokeWidth={1} strokeDasharray="3 3" />}
-          {series.map((s, si) => {
-            // Lines join consecutive clean laps of one stint; anything else breaks the line.
-            const runs: PaceLap[][] = [];
-            for (const l of s.laps) {
-              const prev = runs.at(-1)?.at(-1);
-              if (l.status !== "clean") continue;
-              if (prev && prev.lap === l.lap - 1 && prev.stint === l.stint) runs.at(-1)!.push(l);
-              else runs.push([l]);
-            }
-            const c = colour(s.driver);
-            return (
-              <g key={s.driver}>
-                {runs.map((r) =>
-                  r.length === 1 ? (
-                    <circle key={r[0].lap} cx={x(r[0].lap)} cy={y(r[0].time)} r={4} fill={si ? "var(--panel)" : c} stroke={si ? c : "var(--panel)"} strokeWidth={2} />
-                  ) : (
-                  <polyline key={r[0].lap} points={r.map((l) => `${x(l.lap).toFixed(1)},${y(l.time).toFixed(1)}`).join(" ")} fill="none" stroke={c} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={si ? "6 4" : undefined} />
-                  ),
-                )}
-                {s.laps.map((l) =>
-                  l.time > yMax ? (
-                    <path key={l.lap} d={`M${x(l.lap)} ${TOP - 4} l4 8 h-8 Z`} fill="none" stroke={c} strokeWidth={1.5} />
-                  ) : l.status !== "clean" || l.deleted ? (
-                    <circle key={l.lap} cx={x(l.lap)} cy={y(l.time)} r={4} fill="var(--panel)" stroke={c} strokeWidth={2} />
-                  ) : hover === l.lap ? (
-                    <circle key={l.lap} cx={x(l.lap)} cy={y(l.time)} r={4.5} fill={si ? "var(--panel)" : c} stroke={si ? c : "var(--panel)"} strokeWidth={2} />
-                  ) : null,
-                )}
-                {/* Tyres: a band per driver under the axis, coloured by compound. */}
-                {s.laps.map((l) => (
-                  <rect key={`t${l.lap}`} x={x(l.lap) - (RIGHT - LEFT) / Math.max(1, lastLap - 1) / 2 + 0.5} y={BOTTOM + 10 + si * (BAND + 6)} width={Math.max(1, (RIGHT - LEFT) / Math.max(1, lastLap - 1) - 1)} height={BAND} rx={2} fill={compoundColour(l.compound)} opacity={l.status === "clean" ? 1 : 0.55} />
-                ))}
-                <text x={RIGHT + 10} y={BOTTOM + 10 + si * (BAND + 6) + BAND - 1} fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{code(s.driver)}</text>
-              </g>
-            );
-          })}
-          <rect x={LEFT} y={TOP} width={RIGHT - LEFT} height={BOTTOM - TOP} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
-        </svg>
-        {hover !== null && (
-          <div className="tooltip" style={{ left: `${Math.min(84, Math.max(16, (x(hover) / W) * 100))}%` }} role="status">
-            <div className="hd" style={{ marginBottom: 4 }}>Lap {hover}</div>
-            {series.map((s) => {
-              const l = s.laps.find((p) => p.lap === hover);
+        <div className="chart-canvas">
+          <svg viewBox={`0 0 ${W} ${H}`} className="map" role="img" aria-label={`Lap times of ${series.map((s) => code(s.driver)).join(" and ")} by lap. The stint table below gives each stint's typical lap and trend.`}>
+            <g stroke="#2e3542" strokeWidth={1}>
+              {ticks.map((v) => <line key={v} x1={LEFT} x2={RIGHT} y1={y(v)} y2={y(v)} />)}
+            </g>
+            <g fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>
+              {ticks.map((v) => <text key={v} x={LEFT - 8} y={y(v) + 4} textAnchor="end">{tick(v)}</text>)}
+              {lapTicks.map((l) => <text key={l} x={x(l)} y={H - 6} textAnchor="middle">L{l}</text>)}
+            </g>
+            {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={TOP} y2={BOTTOM} stroke="var(--muted)" strokeWidth={1} strokeDasharray="3 3" />}
+            {series.map((s, si) => {
+              // Lines join consecutive clean laps of one stint; anything else breaks the line.
+              const runs: PaceLap[][] = [];
+              for (const l of s.laps) {
+                const prev = runs.at(-1)?.at(-1);
+                if (l.status !== "clean") continue;
+                if (prev && prev.lap === l.lap - 1 && prev.stint === l.stint) runs.at(-1)!.push(l);
+                else runs.push([l]);
+              }
+              const c = colour(s.driver);
               return (
-                <div key={s.driver} style={{ marginTop: 2 }}>
-                  <div className="tooltip-row">
-                    <span className="bar" style={{ background: colour(s.driver), height: 12, width: 3 }} />
-                    <span>{code(s.driver)}</span>
-                    <span className="num" style={{ marginLeft: "auto" }}>{l ? formatLapTime(l.time) : "–"}</span>
-                  </div>
-                  {l && (
-                    <div className="note">
-                      {compoundName(l.compound)}{l.age !== null ? `, ${l.age} laps old` : ""}
-                      {STATUS[l.status] ? ` · ${STATUS[l.status]}` : ""}
-                      {l.deleted ? " · deleted" : ""}
-                    </div>
+                <g key={s.driver}>
+                  {runs.map((r) =>
+                    r.length === 1 ? (
+                      <circle key={r[0].lap} cx={x(r[0].lap)} cy={y(r[0].time)} r={4} fill={si ? "var(--panel)" : c} stroke={si ? c : "var(--panel)"} strokeWidth={2} />
+                    ) : (
+                    <polyline key={r[0].lap} points={r.map((l) => `${x(l.lap).toFixed(1)},${y(l.time).toFixed(1)}`).join(" ")} fill="none" stroke={c} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={si ? "6 4" : undefined} />
+                    ),
                   )}
-                </div>
+                  {s.laps.map((l) =>
+                    l.time > yMax ? (
+                      <path key={l.lap} d={`M${x(l.lap)} ${TOP - 4} l4 8 h-8 Z`} fill="none" stroke={c} strokeWidth={1.5} />
+                    ) : l.status !== "clean" || l.deleted ? (
+                      <circle key={l.lap} cx={x(l.lap)} cy={y(l.time)} r={4} fill="var(--panel)" stroke={c} strokeWidth={2} />
+                    ) : hover === l.lap ? (
+                      <circle key={l.lap} cx={x(l.lap)} cy={y(l.time)} r={4.5} fill={si ? "var(--panel)" : c} stroke={si ? c : "var(--panel)"} strokeWidth={2} />
+                    ) : null,
+                  )}
+                  {/* Tyres: a band per driver under the axis, coloured by compound. */}
+                  {s.laps.map((l) => (
+                    <rect key={`t${l.lap}`} x={x(l.lap) - (RIGHT - LEFT) / Math.max(1, lastLap - 1) / 2 + 0.5} y={BOTTOM + 10 + si * (BAND + 6)} width={Math.max(1, (RIGHT - LEFT) / Math.max(1, lastLap - 1) - 1)} height={BAND} rx={2} fill={compoundColour(l.compound)} opacity={l.status === "clean" ? 1 : 0.55} />
+                  ))}
+                  <text x={RIGHT + 10} y={BOTTOM + 10 + si * (BAND + 6) + BAND - 1} fill="var(--muted)" fontFamily="var(--mono)" fontSize={11}>{code(s.driver)}</text>
+                </g>
               );
             })}
-          </div>
-        )}
+            <rect x={LEFT} y={TOP} width={RIGHT - LEFT} height={BOTTOM - TOP} fill="transparent" {...pointer.props(onMove)} />
+          </svg>
+          {hover !== null && (
+            <div className="tooltip" style={{ left: `${Math.min(84, Math.max(16, (x(hover) / W) * 100))}%` }} role="status">
+              <div className="hd" style={{ marginBottom: 4 }}>Lap {hover}</div>
+              {series.map((s) => {
+                const l = s.laps.find((p) => p.lap === hover);
+                return (
+                  <div key={s.driver} style={{ marginTop: 2 }}>
+                    <div className="tooltip-row">
+                      <span className="bar" style={{ background: colour(s.driver), height: 12, width: 3 }} />
+                      <span>{code(s.driver)}</span>
+                      <span className="num" style={{ marginLeft: "auto" }}>{l ? formatLapTime(l.time) : "–"}</span>
+                    </div>
+                    {l && (
+                      <div className="note">
+                        {compoundName(l.compound)}{l.age !== null ? `, ${l.age} laps old` : ""}
+                        {STATUS[l.status] ? ` · ${STATUS[l.status]}` : ""}
+                        {l.deleted ? " · deleted" : ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       <p className="note">
         Hollow dots: laps that don&apos;t show pace (standing start, pit laps, safety car, VSC or red flag, or over 7% off the driver&apos;s best so far) or whose time was deleted. The bands under the chart are each driver&apos;s tyres, lap by lap.

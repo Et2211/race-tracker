@@ -270,7 +270,12 @@ a:focus-visible {
 .standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
 /* On a phone the chart keeps a readable size and scrolls sideways inside its panel. */
 .chart-wrap { position: relative; overflow-x: auto; }
-.chart-wrap > svg { min-width: 560px; }
+.chart-canvas { position: relative; min-width: 560px; } /* the tooltip is placed against this, which scrolls with the chart */
+/* Pressing a chart on a phone looks at a point, not at text: no selection, no callout, no tap flash. */
+.chart-wrap { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+/* Wide enough not to scroll sideways: a finger can drag across the chart to read along it, and the
+   page still scrolls vertically. Narrower, a drag scrolls the chart and a tap reads a point. */
+@media (min-width: 640px) { .chart-hit { touch-action: pan-y; } }
 .tooltip { position: absolute; top: 8px; transform: translateX(-50%); background: var(--inset); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; min-width: 130px; pointer-events: none; font-size: 13px; }
 .tooltip-row { display: flex; align-items: center; gap: 6px; font-family: var(--cond); font-weight: 700; font-size: 15px; }
 .home-link { color: inherit; text-decoration: none; }
