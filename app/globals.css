@@ -213,6 +213,16 @@ a:focus-visible {
 .ideal .parts { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); }
 .ideal .parts b { color: var(--text); font-family: var(--mono); font-weight: 500; }
 .footer { font-size: 13px; color: var(--muted); line-height: 1.5; padding: 8px 4px 0; }
+.footer a { color: inherit; }
+.footer a:hover { color: var(--text); }
+.site-links { white-space: nowrap; }
+
+/* Plain text pages (privacy) */
+.prose { max-width: 70ch; font-size: 15px; line-height: 1.6; }
+.prose h2 { margin: 8px 0 0; font-family: var(--cond); font-size: 22px; }
+.prose p, .prose ul { margin: 0; }
+.prose ul { padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 6px; }
+.prose a { color: var(--red-text); }
 
 /* --- Homepage ------------------------------------------------------------- */
 .seasons { display: flex; flex-wrap: wrap; gap: 8px; }

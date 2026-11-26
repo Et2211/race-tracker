@@ -337,3 +337,22 @@ test("sessions the app does not list are refused without a download, and crawler
   const robots = await (await request.get("/robots.txt")).text();
   expect(robots).toContain("Disallow: /api/");
 });
+
+test("the footer links to feedback and privacy; the privacy and not-found pages are accessible and fit the screen", async ({ page }) => {
+  await page.goto("/?season=2026");
+  await expect(page.getByRole("link", { name: "Report a problem" })).toHaveAttribute("href", /github\.com\/.+\/issues\/new/);
+  await page.getByRole("link", { name: "Privacy" }).click();
+  await expect(page.getByRole("heading", { name: "Privacy", level: 1 })).toBeVisible();
+  for (const path of ["/privacy", "/no-such-page"]) {
+    const res = await page.goto(path);
+    if (path === "/no-such-page") {
+      expect(res?.status()).toBe(404);
+      await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "← All sessions" })).toBeVisible();
+    }
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations.map((v) => `${path} ${v.id}: ${v.nodes.length}`)).toEqual([]);
+    const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+    expect(sw, path).toBeLessThanOrEqual(cw);
+  }
+});
