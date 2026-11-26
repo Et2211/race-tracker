@@ -8,9 +8,16 @@ const barlow = Barlow({ variable: "--font-barlow", subsets: ["latin"], weight: [
 const barlowCondensed = Barlow_Condensed({ variable: "--font-barlow-condensed", subsets: ["latin"], weight: ["500", "600", "700"] });
 const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["latin"], weight: ["500", "600"] });
 
+const NAME = "Speed Trace";
+const DESCRIPTION = "Formula 1 sessions live and replayed: track map, timing, gaps, flags and driver telemetry. An unofficial fan site.";
+
 export const metadata: Metadata = {
-  title: "Race Tracker",
-  description: "Personal race weekend dashboard: track map, sector times, gaps and flags.",
+  title: NAME,
+  description: DESCRIPTION,
+  applicationName: NAME,
+  // What a shared link shows (X, messaging apps).
+  openGraph: { siteName: NAME, title: NAME, description: DESCRIPTION, type: "website" },
+  twitter: { card: "summary", title: NAME, description: DESCRIPTION },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
