@@ -10,7 +10,7 @@ import { readJson, writeJson } from "@/lib/storage/store";
 import { supabase, supabaseConfigured } from "@/lib/storage/supabase";
 import type { MultiViewerCircuit } from "@/lib/track/markers";
 import { assembleMeta, outlineFrom, outlineLap, qualifyingFor, WINDOW_MS, type LearnedSectors } from "./assemble";
-import { replayAfter } from "./catalog";
+import { replayAfter, SETTLE_MS } from "./catalog";
 import { circuitShape, summarize, type CircuitShape } from "./summary";
 import { encodeChunk } from "./telemetry";
 import { sessionKind, type SessionMeta, type TelemetryChunk } from "./types";
@@ -60,6 +60,17 @@ export async function writeDerived(meta: SessionMeta): Promise<number> {
 export const chunkKey = (sessionKey: number, index: number) => `sessions/${sessionKey}/chunk-${index}.json`;
 
 /**
+ * Practice is kept only for a while (see practice-store.ts): in its own folder, outside the
+ * session index and the storage cap, so it never shows as downloaded or serves as a circuit's
+ * reference outline, and the daily job can clear it with one listing.
+ */
+export const practiceMetaKey = (sessionKey: number) => `practice/${sessionKey}-meta.json`;
+export const practiceChunkKey = (sessionKey: number, index: number) => `practice/${sessionKey}-chunk-${index}.json`;
+/** Practice is kept only once OpenF1 has settled; before that every opening builds it afresh. */
+const keepPractice = (session: { date_end: string }) => Date.parse(session.date_end) + SETTLE_MS < Date.now();
+const readMeta = async (sessionKey: number) => (await readJson<SessionMeta>(metaKey(sessionKey))) ?? (await readJson<SessionMeta>(practiceMetaKey(sessionKey)));
+
+/**
  * A stored session's metadata, kept for 10 minutes per server instance: downloading its windows
  * one request at a time needs it each time, and it is a multi-MB file.
  */
@@ -67,7 +78,7 @@ const metaMemo = new Map<number, { at: number; meta: Promise<SessionMeta | null>
 export function storedSessionMeta(sessionKey: number): Promise<SessionMeta | null> {
   const hit = metaMemo.get(sessionKey);
   if (hit && Date.now() - hit.at < 10 * 60_000) return hit.meta;
-  const meta = readJson<SessionMeta>(metaKey(sessionKey));
+  const meta = readMeta(sessionKey);
   metaMemo.set(sessionKey, { at: Date.now(), meta });
   meta.then((m) => {
     if (!m) metaMemo.delete(sessionKey); // not stored yet: ask again next time
@@ -172,18 +183,18 @@ export function ingestMeta(sessionKey: number): Promise<SessionMeta> {
   // holder is noticed within a minute; a waiter gives up after 150 s, leaving time for a full
   // download of its own inside the 300 s function limit.
   return once(key, () =>
-    withDownloadLock(downloadLocks(), key, () => readJson<SessionMeta>(metaKey(sessionKey)), () => downloadMeta(sessionKey), { ttlSeconds: 60, waitMs: 150_000 }),
+    withDownloadLock(downloadLocks(), key, () => readMeta(sessionKey), () => downloadMeta(sessionKey), { ttlSeconds: 60, waitMs: 150_000 }),
   );
 }
 
 async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
-  const existing = await readJson<SessionMeta>(metaKey(sessionKey));
+  const existing = await readMeta(sessionKey);
   if (existing) return existing;
   console.info(`[download] session ${sessionKey}: metadata`);
 
   const [session] = await openf1<Session>("sessions", { session_key: sessionKey });
   if (!session) throw new Error(`OpenF1 has no session ${sessionKey}`);
-  // Practice is built and sent, never stored: no space reserved, nothing written or counted.
+  // Practice is kept for a while in its own folder (practice-store.ts): no space reserved or counted.
   const keep = sessionKind(session) !== "practice";
   if (Date.parse(session.date_end) + replayAfter(!keep) > Date.now()) {
     throw new NotReadyError(`This session's replay opens ${keep ? "three hours" : "30 minutes"} after it ends, once OpenF1 has its results. Try again then.`);
@@ -259,6 +270,8 @@ async function downloadMeta(sessionKey: number): Promise<SessionMeta> {
   });
   if (!keep) {
     practiceMemo.set(sessionKey, { at: Date.now(), meta });
+    // Kept so the next viewer, on any server, doesn't download it again; a failed write only costs that.
+    if (keepPractice(session)) await writeJson(practiceMetaKey(sessionKey), meta).catch((e: unknown) => console.warn(`[download] session ${sessionKey}: practice not kept: ${e instanceof Error ? e.message : e}`));
     return meta;
   }
   const bytes = await writeJson(metaKey(sessionKey), meta);
@@ -282,17 +295,20 @@ async function fetchRange<T>(endpoint: string, sessionKey: number, from: number,
 export function ingestWindow(meta: SessionMeta, index: number): Promise<TelemetryChunk> {
   const key = `chunk:${meta.session.session_key}:${index}`;
   return once(key, () =>
-    withDownloadLock(downloadLocks(), key, () => readJson<TelemetryChunk>(chunkKey(meta.session.session_key, index)), () => downloadWindow(meta, index), {
+    withDownloadLock(downloadLocks(), key, () => readChunk(meta, index), () => downloadWindow(meta, index), {
       ttlSeconds: 60,
       waitMs: 150_000,
     }),
   );
 }
 
+const readChunk = (meta: SessionMeta, index: number) =>
+  readJson<TelemetryChunk>(meta.kind === "practice" ? practiceChunkKey(meta.session.session_key, index) : chunkKey(meta.session.session_key, index));
+
 async function downloadWindow(meta: SessionMeta, index: number): Promise<TelemetryChunk> {
   const key = chunkKey(meta.session.session_key, index);
-  const keep = meta.kind !== "practice"; // practice: fetched and sent, never stored
-  const existing = keep ? await readJson<TelemetryChunk>(key) : null;
+  const keep = meta.kind !== "practice"; // practice: kept for a while in its own folder, not counted
+  const existing = await readChunk(meta, index);
   if (existing) return existing;
   const w = meta.windows[index];
   if (!w) throw new Error(`No window ${index}`);
@@ -302,7 +318,10 @@ async function downloadWindow(meta: SessionMeta, index: number): Promise<Telemet
     fetchRange<CarDataRow>("car_data", meta.session.session_key, w.from, w.to),
   ]);
   const chunk = encodeChunk(index, w.from, w.to, location, carData);
-  if (!keep) return chunk;
+  if (!keep) {
+    if (keepPractice(meta.session)) await writeJson(practiceChunkKey(meta.session.session_key, index), chunk).catch((e: unknown) => console.warn(`[download] session ${meta.session.session_key}: practice window ${index} not kept: ${e instanceof Error ? e.message : e}`));
+    return chunk;
+  }
   const bytes = await writeJson(key, chunk);
   await sessionIndex().added(meta.session.session_key, bytes, true);
   return chunk;

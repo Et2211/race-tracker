@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { badRequest, errorJson, parseKey, storedJson, unknownSession } from "@/lib/session/http";
-import { ensureMeta, isKnownSession, storedMeta } from "@/lib/session/source";
+import { ensureMeta, isKnownSession, provisional, storedMeta } from "@/lib/session/source";
 
 // Downloading metadata is about 15 OpenF1 requests at the free tier's pace (~35 s).
 export const maxDuration = 300;
@@ -15,12 +15,11 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/sessions/[key]/
   try {
     // Gzipped either way: the plain JSON can exceed Vercel's 4.5 MB response limit. After a first
     // download, send what was just built rather than reading it back from storage.
-    let raw = await storedMeta(key);
-    if (!raw) {
-      if (!(await isKnownSession(key))) return unknownSession();
-      raw = gzipSync(JSON.stringify(await ensureMeta(key)));
-    }
-    return await storedJson(raw, "meta");
+    const raw = await storedMeta(key);
+    if (raw) return await storedJson(raw, "meta");
+    if (!(await isKnownSession(key))) return unknownSession();
+    const meta = await ensureMeta(key);
+    return await storedJson(gzipSync(JSON.stringify(meta)), provisional(meta) ? "provisional" : "meta");
   } catch (e) {
     return errorJson(e);
   }

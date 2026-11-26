@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { BUCKET, supabase, supabaseConfigured } from "./supabase";
@@ -14,9 +14,13 @@ export interface Store {
   /** Gzipped bytes, or null when the key does not exist. */
   getRaw(key: string): Promise<Buffer | null>;
   putRaw(key: string, gz: Buffer): Promise<void>;
-  /** Files directly under a folder (e.g. "sessions/11369"), names without the .gz suffix, with sizes. */
-  list(folder: string): Promise<{ name: string; bytes: number }[]>;
+  /** Files directly under a folder (e.g. "sessions/11369"), names without the .gz suffix, with sizes and when last written (ms). */
+  list(folder: string): Promise<StoredFile[]>;
+  /** Delete these keys; missing ones are ignored. */
+  remove(keys: string[]): Promise<void>;
 }
+
+export type StoredFile = { name: string; bytes: number; at: number };
 
 class DiskStore implements Store {
   readonly kind = "disk";
@@ -44,9 +48,16 @@ class DiskStore implements Store {
   async list(folder: string) {
     const dir = path.resolve(this.root, folder);
     const names = await readdir(dir).catch(() => [] as string[]);
-    const out: { name: string; bytes: number }[] = [];
-    for (const n of names) if (n.endsWith(".gz")) out.push({ name: n.slice(0, -3), bytes: (await stat(path.join(dir, n))).size });
+    const out: StoredFile[] = [];
+    for (const n of names) {
+      if (!n.endsWith(".gz")) continue;
+      const s = await stat(path.join(dir, n));
+      out.push({ name: n.slice(0, -3), bytes: s.size, at: s.mtimeMs });
+    }
     return out;
+  }
+  async remove(keys: string[]) {
+    for (const key of keys) await rm(this.file(key), { force: true });
   }
 }
 
@@ -66,9 +77,22 @@ class SupabaseStore implements Store {
     if (error) throw error;
   }
   async list(folder: string) {
-    const { data, error } = await supabase().storage.from(BUCKET).list(folder, { limit: 1000 });
-    if (error) throw error;
-    return data.filter((f) => f.name.endsWith(".gz")).map((f) => ({ name: f.name.slice(0, -3), bytes: Number((f.metadata as { size?: number } | null)?.size ?? 0) }));
+    const out: StoredFile[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase().storage.from(BUCKET).list(folder, { limit: 1000, offset });
+      if (error) throw error;
+      for (const f of data) {
+        if (!f.name.endsWith(".gz")) continue;
+        out.push({ name: f.name.slice(0, -3), bytes: Number((f.metadata as { size?: number } | null)?.size ?? 0), at: Date.parse(f.updated_at ?? f.created_at ?? "") || 0 });
+      }
+      if (data.length < 1000) return out;
+    }
+  }
+  async remove(keys: string[]) {
+    for (let i = 0; i < keys.length; i += 100) {
+      const { error } = await supabase().storage.from(BUCKET).remove(keys.slice(i, i + 100).map((k) => `${k}.gz`));
+      if (error) throw error;
+    }
   }
 }
 

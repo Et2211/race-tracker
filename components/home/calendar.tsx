@@ -55,7 +55,7 @@ export function SeasonCalendar({ data }: { data: HomeData }) {
                   <div className="chip-row">
                     {m.sessions.map((s) =>
                       s.available ? (
-                        <Link key={s.sessionKey} href={`/session/${s.sessionKey}`} className="chip-session link" title={s.notStored ? `Watch ${s.name} (loads from OpenF1 each time; practice is not stored)` : `Watch ${s.name}`}>
+                        <Link key={s.sessionKey} href={`/session/${s.sessionKey}`} className="chip-session link" title={`Watch ${s.name}`}>
                           {SHORT[s.name] ?? s.name}
                         </Link>
                       ) : (
